@@ -1,0 +1,7 @@
+[
+  ["elo_whoami", {}],
+  ["elo_list", {"ordner": "Administration", "max": 10}],
+  ["elo_workflow_templates", {}],
+  ["elo_my_tasks", {"max": 5}],
+  ["elo_create_folder", {"eltern": "Administration", "name": "darf nicht klappen ohne -Schreiben"}]
+]

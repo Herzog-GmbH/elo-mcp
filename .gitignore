@@ -1,0 +1,12 @@
+# Zugangsdaten - liegen standardmaessig unter %LOCALAPPDATA%\elo-mcp, nie im Repo
+elo-credential*.xml
+*.credential.xml
+
+# eigene Testaufrufe mit internen IDs
+*.local.json
+*.local.ps1
+
+# Laufzeit
+*.log
+*.tmp
+__pycache__/
