@@ -10,3 +10,6 @@ elo-credential*.xml
 *.log
 *.tmp
 __pycache__/
+
+# gebautes MCPB-Paket
+dist/

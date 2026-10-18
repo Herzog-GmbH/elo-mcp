@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.5.0 – 2026-10-18
+
+- MCPB-Paket (MCP Bundle) für Claude Desktop: `elo-mcp-<version>.mcpb` aus dem GitHub-Release per Doppelklick installieren, IX-URL und Stufen in den Einstellungen der Erweiterung. Zugangsdaten bleiben bei `Set-EloCredential.ps1`, die ELO-Bibliotheken kommen weiter aus dem installierten Client.
+- `mcpb\manifest.json`, Startskript `mcpb\mcpb-start.ps1` (Einstellungen → Schalter von `elo-mcp.ps1`) und `tools\build-mcpb.ps1` (baut reproduzierbar, prüft Version und ASCII, trägt SHA-256 in `server.json` ein).
+- `server.json` für die offizielle MCP Registry (`io.github.Herzog-GmbH/elo-mcp`, Paket `mcpb`).
+- `test\test-mcpb.py`: startet das gebaute Paket so, wie Claude Desktop es startet, und ruft Werkzeuge auf.
+
 ## 0.4.0 – 2026-10-18
 
 Erste öffentliche Fassung.

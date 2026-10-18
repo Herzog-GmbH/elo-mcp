@@ -40,7 +40,7 @@ python -I .\test\test-mcp.py .\test\beispiel-lesen.json -- -IxUrl "<IX-URL>"
 Erwartet: `elo_whoami` zeigt das Konto, die anderen Lesewerkzeuge antworten, und der letzte Aufruf (`elo_create_folder`) wird mit „nicht freigeschaltet" abgelehnt. Ohne Python überspringst du diesen Schritt und testest in Schritt 6.
 
 ## Schritt 5 – Im Client eintragen
-Vorlagen für alle gängigen Clients stehen in `docs/CLIENTS.md`. Nimm den absoluten Pfad zu `elo-mcp.ps1` und `powershell` (Windows PowerShell 5.1), nicht `pwsh`.
+Vorlagen für alle gängigen Clients stehen in `docs/CLIENTS.md`. Nimm den absoluten Pfad zu `elo-mcp.ps1` und `powershell` (Windows PowerShell 5.1), nicht `pwsh`. Für Claude Desktop gibt es zusätzlich das Paket `elo-mcp-<version>.mcpb` aus dem Release. Das installiert der Mensch selbst über die Einstellungen von Claude Desktop, du nennst ihm nur die IX-URL für das Feld in den Einstellungen.
 
 ## Schritt 6 – Testen
 In einer neuen Sitzung `elo_whoami` aufrufen. Konto, Server und Stufen mit dem Menschen abgleichen.
@@ -55,6 +55,7 @@ In einer neuen Sitzung `elo_whoami` aufrufen. Konto, Server und Stufen mit dem M
 | `PKIX path building failed` / Zertifikatsfehler | Das Server-Zertifikat ist im Windows-Zertifikatsspeicher nicht vertrauenswürdig. Das klärt der Mensch mit seiner IT |
 | `Add-Type … System.Web.Extensions` | Gestartet mit PowerShell 7 (`pwsh`). Im Client `powershell` eintragen |
 | `nicht freigeschaltet` | Gewollt: Das Werkzeug braucht `-Schreiben` bzw. `-Bauen` |
+| Claude Desktop (Paket): „Verbindung zum Erweiterungs-Server nicht möglich" | Grund steht in `mcp-server-ELO-MCP-Server.log` im Log-Ordner von Claude Desktop (meist `%LOCALAPPDATA%\Claude\Logs` oder `%APPDATA%\Claude\logs`). Häufig: Zugangsdatei falsch getippt (Pfad über „Durchsuchen" wählen) oder Schritt 3 fehlt |
 | Client meldet Zeitüberschreitung beim ersten Start | Der Vorschalt holt die Werkzeugliste einmal von Java (rund 10 s). Neu verbinden |
 | Weitere Meldungen | Das Log steht auf stderr. `powershell -File .\elo-mcp.ps1 -IxUrl <url>` von Hand starten und die `[elo-mcp]`-Zeilen lesen |
 

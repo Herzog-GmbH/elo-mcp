@@ -23,7 +23,9 @@ claude mcp add elo-test --scope user -- powershell -NoProfile -ExecutionPolicy B
 ```
 
 ## Claude Desktop
-`%APPDATA%\Claude\claude_desktop_config.json`:
+Am einfachsten als Paket (`elo-mcp-<version>.mcpb` aus dem Release), siehe [README](../README.md#claude-desktop-als-paket-installieren). Die IX-URL und die Stufen stellt ihr dann in den Einstellungen der Erweiterung ein, Pfade am besten über „Durchsuchen". Meldet Claude Desktop „Verbindung zum Erweiterungs-Server nicht möglich", steht der Grund in `mcp-server-ELO-MCP-Server.log` im Log-Ordner von Claude Desktop.
+
+Von Hand in `%APPDATA%\Claude\claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {

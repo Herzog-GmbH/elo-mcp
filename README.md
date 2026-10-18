@@ -67,6 +67,21 @@ Ein [MCP](https://modelcontextprotocol.io/)-Server für das **ELO ECM** der ELO 
 
 Ihr wollt, dass eure KI das selbst einrichtet? Gebt ihr diesen Satz: *„Richte den ELO-MCP-Server nach der AGENTS.md in diesem Ordner ein."*
 
+### Claude Desktop: als Paket installieren
+
+Für Claude Desktop gibt es den Server auch als Paket (MCPB), ohne Git und ohne Konfigurationsdatei:
+
+1. Aus dem [neuesten Release](https://github.com/Herzog-GmbH/elo-mcp/releases/latest) `elo-mcp-<version>.mcpb` und `Set-EloCredential.ps1` laden.
+2. **Zugangsdaten hinterlegen**, selbst im Terminal:
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Set-EloCredential.ps1"
+   ```
+3. In Claude Desktop unter **Einstellungen → Erweiterungen → Erweiterte Einstellungen → Erweiterung installieren** (Settings → Extensions → Advanced settings → Install Extension) die `.mcpb`-Datei wählen.
+4. **IX-URL** eintragen. Schreiben und Bauen nur bei Bedarf einschalten. Zugangsdatei und Client-Ordner bleiben leer, solange ihr die Standards nutzt.
+5. In einem neuen Chat „Wer bin ich in ELO?" fragen.
+
+Im Paket stecken nur die Skripte aus diesem Repo (rund 70 KB). Java und die ELO-Bibliotheken kommen wie sonst aus dem installierten ELO Client. Für ein Update installiert ihr einfach die neue `.mcpb`.
+
 ## Schalter
 
 Alle Schalter stehen hinter dem Skriptpfad in der Client-Konfiguration.
@@ -172,6 +187,10 @@ MCP-Clients starten jeden Server einmal je Sitzung. Eine JVM je Sitzung kostet r
 | `src/elo-mcp-start.js` | Hauptschleife |
 | `test/offline.ps1` | Prüfungen ohne ELO (Protokoll, Stufen, Bauplan, Skripte) |
 | `test/test-mcp.py` | Aufrufe gegen ein echtes ELO, z. B. `python -I test\test-mcp.py test\beispiel-lesen.json -- -IxUrl <url>` |
+| `mcpb/` | Paket für Claude Desktop: `manifest.json`, Startskript `mcpb-start.ps1` (Einstellungen → Schalter), Symbol |
+| `tools/build-mcpb.ps1` | baut `dist\elo-mcp-<version>.mcpb` und trägt Prüfsumme und Download-URL in `server.json` ein |
+| `server.json` | Eintrag für die [MCP Registry](https://registry.modelcontextprotocol.io/) |
+| `test/test-mcpb.py` | startet das gebaute Paket wie Claude Desktop, z. B. `python -I test\test-mcpb.py dist\elo-mcp-0.5.0.mcpb -- ix_url=<url>` |
 
 Fallen der IX-API, auf die wir beim Bau gestoßen sind, stehen in [docs/FALLEN.md](docs/FALLEN.md).
 
@@ -183,4 +202,4 @@ Issues und Pull Requests sind willkommen, gern auch mit Erfahrungen aus anderen 
 
 MIT, siehe [LICENSE](LICENSE). Ohne Gewähr: Probiert Schreiben und Bauen zuerst an einem Testarchiv aus.
 
-Dies ist kein Produkt der ELO Digital Office GmbH und wird von ihr weder unterstützt noch geprüft. ELO ist eine Marke der ELO Digital Office GmbH. Die ELO-Bibliotheken sind nicht Teil dieses Repos. Sie kommen aus eurem lizenzierten ELO Java Client.
+Dies ist kein Produkt der ELO Digital Office GmbH und wird von ihr weder unterstützt noch geprüft. ELO ist eine Marke der ELO Digital Office GmbH. Die ELO-Bibliotheken sind nicht Teil dieses Repos und nicht im Paket. Sie kommen aus eurem lizenzierten ELO Java Client.

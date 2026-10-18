@@ -1,0 +1,104 @@
+{
+  "manifest_version": "0.3",
+  "name": "elo-mcp",
+  "display_name": "ELO-MCP-Server",
+  "version": "0.5.0",
+  "description": "ELO ECM für die KI: suchen, Dokumenttext lesen, ablegen, Workflows steuern und bauen, mit den Rechten des eigenen ELO-Kontos.",
+  "long_description": "Ein MCP-Server für das **ELO ECM** der ELO Digital Office GmbH. Er läuft lokal neben dem installierten **ELO Client (ELO 25)** oder **ELO Java Client** und meldet sich mit eurem eigenen ELO-Konto an. ELO prüft jeden Zugriff selbst.\n\n**Vor dem ersten Start** die Zugangsdaten einmal selbst im Terminal hinterlegen (das Passwort wird per DPAPI für euer Windows-Konto verschlüsselt, es steht nie in den Einstellungen):\n\n`powershell -NoProfile -ExecutionPolicy Bypass -File Set-EloCredential.ps1`\n\n`Set-EloCredential.ps1` liegt im Release neben dem Paket und im Repo.\n\n**Voraussetzungen:** Windows 10/11 mit Windows PowerShell 5.1, ELO Client 25 oder ELO Java Client auf demselben Rechner, Indexserver mit Java-API (getestet mit 25.00). Die ELO-Bibliotheken sind nicht im Paket, sie kommen aus dem installierten Client.\n\n**Stufen:** Lesen ist immer an. Schreiben und Bauen schaltet ihr in den Einstellungen einzeln frei. Jede Änderung kommt zuerst als Vorschau und läuft nur mit einem Einmal-Token. Löschen, Verschieben und Rechte ändern gibt es nicht.\n\nKein Produkt der ELO Digital Office GmbH. ELO ist eine Marke der ELO Digital Office GmbH.",
+  "author": {
+    "name": "Herzog-GmbH",
+    "url": "https://github.com/Herzog-GmbH"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Herzog-GmbH/elo-mcp.git"
+  },
+  "homepage": "https://github.com/Herzog-GmbH/elo-mcp",
+  "documentation": "https://github.com/Herzog-GmbH/elo-mcp#readme",
+  "support": "https://github.com/Herzog-GmbH/elo-mcp/issues",
+  "icon": "icon.png",
+  "license": "MIT",
+  "keywords": ["elo", "ecm", "dms", "archiv", "workflow", "eloas", "document management"],
+  "server": {
+    "type": "binary",
+    "entry_point": "mcpb-start.ps1",
+    "mcp_config": {
+      "command": "powershell.exe",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${__dirname}/mcpb-start.ps1"],
+      "env": {
+        "ELO_MCPB_IX_URL": "${user_config.ix_url}",
+        "ELO_MCPB_SCHREIBEN": "${user_config.schreiben}",
+        "ELO_MCPB_BAUEN": "${user_config.bauen}",
+        "ELO_MCPB_CREDENTIAL_FILE": "${user_config.credential_file}",
+        "ELO_MCPB_CLIENT_DIR": "${user_config.client_dir}",
+        "ELO_MCPB_ARCHIV": "${user_config.archiv}"
+      }
+    }
+  },
+  "user_config": {
+    "ix_url": {
+      "type": "string",
+      "title": "IX-URL",
+      "description": "IX-URL des ELO-Servers, z. B. https://elo.example.com:9093/ix-Archiv/ix. Sie steht im Anmeldeprofil des ELO Client oder kommt von eurem ELO-Administrator.",
+      "required": true
+    },
+    "schreiben": {
+      "type": "boolean",
+      "title": "Schreiben freischalten (Stufe 2)",
+      "description": "Ablegen, neue Version, Indexfelder setzen, Workflow starten, Aufgabe weiterleiten. Jede Änderung zweistufig mit Vorschau und Einmal-Token.",
+      "default": false
+    },
+    "bauen": {
+      "type": "boolean",
+      "title": "Bauen freischalten (Stufe 3)",
+      "description": "Workflow-Vorlagen, ELOas-Regeln, IX-Skripte und Formularseiten bauen. Am besten nur gegen ein Testarchiv.",
+      "default": false
+    },
+    "credential_file": {
+      "type": "file",
+      "title": "Zugangsdatei (optional)",
+      "description": "Mit Set-EloCredential.ps1 angelegte Datei, z. B. für ein zweites Konto. Leer lassen für %LOCALAPPDATA%\\elo-mcp\\elo-credential.xml.",
+      "required": false
+    },
+    "client_dir": {
+      "type": "directory",
+      "title": "Ordner des ELO Client (optional)",
+      "description": "Nur nötig, wenn der ELO Client bzw. ELO Java Client nicht unter Programme liegt: der Ordner mit jre\\bin\\java.exe und lib.",
+      "required": false
+    },
+    "archiv": {
+      "type": "string",
+      "title": "Archivname (optional)",
+      "description": "Name des Archivs in den Hinweisen an die KI, z. B. \"der Muster GmbH (Test)\".",
+      "required": false
+    }
+  },
+  "tools": [
+    { "name": "elo_whoami", "description": "Konto, Server, IX-Version, freigeschaltete Stufen" },
+    { "name": "elo_search", "description": "Suche über Titel, Volltext und Indexfelder, optional in einem Ordner" },
+    { "name": "elo_find_by_fields", "description": "Datenbanksuche über Maske und Indexfelder" },
+    { "name": "elo_list", "description": "Ordnerinhalt, eine Ebene" },
+    { "name": "elo_get_object", "description": "Metadaten, Indexfelder, Pfad, aktuelle Version, Link" },
+    { "name": "elo_get_versions", "description": "Versionsliste eines Dokuments" },
+    { "name": "elo_get_text", "description": "Text aus PDF, DOCX, XLSX, PPTX, XLS, EML und Textdateien" },
+    { "name": "elo_user_rights", "description": "Wirksame Funktionsrechte eines Benutzers mit Herkunft" },
+    { "name": "elo_workflow_templates", "description": "Alle Workflow-Vorlagen" },
+    { "name": "elo_workflow", "description": "Vorlage oder Workflow im Detail" },
+    { "name": "elo_workflows_of_object", "description": "Laufende oder beendete Workflows zu einem Objekt" },
+    { "name": "elo_my_tasks", "description": "Eigene Aufgaben, auch über Gruppen" },
+    { "name": "elo_workflow_export", "description": "Workflow-Vorlage als JSON-Bauplan" },
+    { "name": "elo_create_folder", "description": "Ordner anlegen (Stufe 2)" },
+    { "name": "elo_create_document", "description": "Lokale Datei als Dokument ablegen (Stufe 2)" },
+    { "name": "elo_new_version", "description": "Neue Version eines Dokuments (Stufe 2)" },
+    { "name": "elo_set_fields", "description": "Indexfelder und Kurzbezeichnung setzen (Stufe 2)" },
+    { "name": "elo_start_workflow", "description": "Workflow aus Vorlage starten (Stufe 2)" },
+    { "name": "elo_forward_task", "description": "Aufgabe weiterleiten (Stufe 2)" },
+    { "name": "elo_workflow_build", "description": "Workflow-Vorlage aus Bauplan anlegen oder ersetzen (Stufe 3)" },
+    { "name": "elo_script_update", "description": "Neue Version einer ELOas-Regel, eines IX-Skripts oder einer Formularseite (Stufe 3)" },
+    { "name": "elo_script_create", "description": "Neues Dokument unter Administration (Stufe 3)" }
+  ],
+  "tools_generated": false,
+  "compatibility": {
+    "platforms": ["win32"]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Herzog-GmbH/elo-mcp",
+  "title": "ELO ECM",
+  "description": "ELO ECM: search, read text, file documents, run and build workflows with your own ELO account",
+  "repository": {
+    "url": "https://github.com/Herzog-GmbH/elo-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/Herzog-GmbH/elo-mcp",
+  "version": "0.5.0",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/Herzog-GmbH/elo-mcp/releases/download/v0.5.0/elo-mcp-0.5.0.mcpb",
+      "fileSha256": "d36536c4dc154ea8a908d03405f8efa9820793cdd3d7610feb4c7971872b4e3e",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
