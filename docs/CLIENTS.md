@@ -5,7 +5,7 @@ Der Server läuft **lokal über stdio**: Der Client startet `elo-mcp.ps1` selbst
 | | |
 |---|---|
 | Befehl | `powershell` (Windows PowerShell 5.1, nicht `pwsh`) |
-| Argumente | `-NoProfile -ExecutionPolicy Bypass -File <Pfad>\elo-mcp.ps1 -IxUrl <IX-URL>` und bei Bedarf `-Schreiben`, `-Bauen`, `-Archiv "<name>"` |
+| Argumente | `-NoProfile -ExecutionPolicy Bypass -File <Pfad>\elo-mcp.ps1 -IxUrl <IX-URL>` und bei Bedarf `-Schreiben`, `-Bauen`, `-Archiv "<name>"`, für ein zweites Archiv `-IxUrl2 <IX-URL> -Name <name> -Name2 <name>` mit `-Schreiben2`, `-Bauen2` |
 
 Im Folgenden liegt der Server unter `C:\Tools\elo-mcp`, die IX-URL ist `https://elo.example.com:9093/ix-Archiv/ix`. Zugangsdaten stehen in keiner Konfiguration: Die hinterlegt ihr vorher einmal mit `Set-EloCredential.ps1`.
 
@@ -17,10 +17,11 @@ Der erste Werkzeugaufruf einer Sitzung startet Java und dauert 2–8 Sekunden. D
 ```powershell
 claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\elo-mcp\elo-mcp.ps1" -IxUrl "https://elo.example.com:9093/ix-Archiv/ix"
 ```
-Zweiter Eintrag für ein Testarchiv mit allen Stufen:
+Produktiv nur lesend und dazu das Testarchiv mit allen Stufen, in einem Eintrag ([Zwei Archive](../README.md#zwei-archive)):
 ```powershell
-claude mcp add elo-test --scope user -- powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\elo-mcp\elo-mcp.ps1" -IxUrl "https://elo-test.example.com:9093/ix-Archiv/ix" -Schreiben -Bauen -Archiv "(Testarchiv)"
+claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\elo-mcp\elo-mcp.ps1" -IxUrl "https://elo.example.com:9093/ix-Archiv/ix" -Name Produktiv -IxUrl2 "https://elo-test.example.com:9093/ix-Archiv/ix" -Name2 Test -Schreiben2 -Bauen2
 ```
+In den JSON-Vorlagen unten kommen dieselben Schalter einfach ans Ende von `args`.
 
 ## Claude Desktop
 Am einfachsten als Paket (`elo-mcp-<version>.mcpb` aus dem Release), siehe [README](../README.md#claude-desktop-als-paket-installieren). Die IX-URL und die Stufen stellt ihr dann in den Einstellungen der Erweiterung ein, Pfade am besten über „Durchsuchen". Meldet Claude Desktop „Verbindung zum Erweiterungs-Server nicht möglich", steht der Grund in `mcp-server-ELO-MCP-Server.log` im Log-Ordner von Claude Desktop.

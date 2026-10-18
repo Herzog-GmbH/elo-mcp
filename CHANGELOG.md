@@ -1,5 +1,14 @@
 # Änderungen
 
+## 0.6.0 – 2026-10-18
+
+- **Zwei Archive in einem Eintrag**, z. B. Produktiv und Test: `-IxUrl2` mit `-Name`/`-Name2` (Kurznamen), `-Schreiben2`, `-Bauen2`, `-CredentialFile2`, `-Archiv2`. Im Paket für Claude Desktop als „Archiv 2" in den Einstellungen.
+- Jedes Werkzeug hat dann den Parameter `archiv`, ohne Angabe gilt das erste Archiv. Die Hinweise an die KI nennen beide Archive mit ihren Stufen, Schreib- und Bauwerkzeuge sagen, in welchem Archiv sie gehen.
+- Je Archiv ein eigener Java-Prozess mit eigenen Zugangsdaten und Stufen: Verbindungen, Zwischenspeicher und Tokens mischen sich nicht. Ein Token aus der Vorschau gilt nur im Archiv der Vorschau. Java startet je Archiv erst beim ersten Aufruf.
+- `elo_whoami`, Vorschau, Ergebnis und Protokoll nennen das Archiv.
+- Der Schlüssel des Zwischenspeichers umfasst jetzt auch `elo-mcp.ps1`.
+- Offline-Test mit drittem Lauf „zwei Archive" (50/68/74 Prüfungen).
+
 ## 0.5.0 – 2026-10-18
 
 - MCPB-Paket (MCP Bundle) für Claude Desktop: `elo-mcp-<version>.mcpb` aus dem GitHub-Release per Doppelklick installieren, IX-URL und Stufen in den Einstellungen der Erweiterung. Zugangsdaten bleiben bei `Set-EloCredential.ps1`, die ELO-Bibliotheken kommen weiter aus dem installierten Client.

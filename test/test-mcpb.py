@@ -2,6 +2,7 @@
 
     python -I test\\test-mcpb.py dist\\elo-mcp-<version>.mcpb [aufrufe.json | --liste] -- ix_url=<url> [schreiben=true] [bauen=true]
                                                             [credential_file=<pfad>] [client_dir=<pfad>] [archiv=<name>]
+                                                            [name=<kurz> ix_url2=<url> name2=<kurz> schreiben2=true bauen2=true ...]
 
 Statt der .mcpb geht auch ein entpackter Ordner, z. B. die von Claude Desktop installierte Kopie unter
 %APPDATA%\\Claude\\Claude Extensions\\<id>. Entpackt das Paket in einen Temp-Ordner, setzt die Einstellungen (user_config) wie der MCPB-Standard
@@ -45,6 +46,8 @@ for a in konfig_args:
     if k not in schema:
         sys.exit("unbekannte Einstellung: " + k + " (bekannt: " + ", ".join(schema) + ")")
     werte[k] = (v.lower() == "true") if schema[k]["type"] == "boolean" else v
+if len(argv) == 1 and werte.get("ix_url2"):
+    calls.append(["elo_whoami", {"archiv": werte.get("name2") or "2"}])   # Standardaufruf auch fuers zweite Archiv
 fehlt = [k for k, v in schema.items() if v.get("required") and werte.get(k) in (None, "")]
 if fehlt:
     sys.exit("Pflichtangabe fehlt: " + ", ".join(fehlt))

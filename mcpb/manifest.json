@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "elo-mcp",
   "display_name": "ELO-MCP-Server",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "ELO ECM für die KI: suchen, Dokumenttext lesen, ablegen, Workflows steuern und bauen, mit den Rechten des eigenen ELO-Kontos.",
-  "long_description": "Ein MCP-Server für das **ELO ECM** der ELO Digital Office GmbH. Er läuft lokal neben dem installierten **ELO Client (ELO 25)** oder **ELO Java Client** und meldet sich mit eurem eigenen ELO-Konto an. ELO prüft jeden Zugriff selbst.\n\n**Vor dem ersten Start** die Zugangsdaten einmal selbst im Terminal hinterlegen (das Passwort wird per DPAPI für euer Windows-Konto verschlüsselt, es steht nie in den Einstellungen):\n\n`powershell -NoProfile -ExecutionPolicy Bypass -File Set-EloCredential.ps1`\n\n`Set-EloCredential.ps1` liegt im Release neben dem Paket und im Repo.\n\n**Voraussetzungen:** Windows 10/11 mit Windows PowerShell 5.1, ELO Client 25 oder ELO Java Client auf demselben Rechner, Indexserver mit Java-API (getestet mit 25.00). Die ELO-Bibliotheken sind nicht im Paket, sie kommen aus dem installierten Client.\n\n**Stufen:** Lesen ist immer an. Schreiben und Bauen schaltet ihr in den Einstellungen einzeln frei. Jede Änderung kommt zuerst als Vorschau und läuft nur mit einem Einmal-Token. Löschen, Verschieben und Rechte ändern gibt es nicht.\n\nKein Produkt der ELO Digital Office GmbH. ELO ist eine Marke der ELO Digital Office GmbH.",
+  "long_description": "Ein MCP-Server für das **ELO ECM** der ELO Digital Office GmbH. Er läuft lokal neben dem installierten **ELO Client (ELO 25)** oder **ELO Java Client** und meldet sich mit eurem eigenen ELO-Konto an. ELO prüft jeden Zugriff selbst.\n\n**Vor dem ersten Start** die Zugangsdaten einmal selbst im Terminal hinterlegen (das Passwort wird per DPAPI für euer Windows-Konto verschlüsselt, es steht nie in den Einstellungen):\n\n`powershell -NoProfile -ExecutionPolicy Bypass -File Set-EloCredential.ps1`\n\n`Set-EloCredential.ps1` liegt im Release neben dem Paket und im Repo.\n\n**Voraussetzungen:** Windows 10/11 mit Windows PowerShell 5.1, ELO Client 25 oder ELO Java Client auf demselben Rechner, Indexserver mit Java-API (getestet mit 25.00). Die ELO-Bibliotheken sind nicht im Paket, sie kommen aus dem installierten Client.\n\n**Stufen:** Lesen ist immer an. Schreiben und Bauen schaltet ihr in den Einstellungen einzeln frei. Jede Änderung kommt zuerst als Vorschau und läuft nur mit einem Einmal-Token. Löschen, Verschieben und Rechte ändern gibt es nicht.\n\n**Zwei Archive:** Mit „Archiv 2“ in den Einstellungen arbeitet die KI z. B. mit Produktiv und Test, jedes mit eigenen Stufen und Zugangsdaten. Jedes Werkzeug hat dann den Parameter `archiv`.\n\nKein Produkt der ELO Digital Office GmbH. ELO ist eine Marke der ELO Digital Office GmbH.",
   "author": {
     "name": "Herzog-GmbH",
     "url": "https://github.com/Herzog-GmbH"
@@ -31,7 +31,14 @@
         "ELO_MCPB_BAUEN": "${user_config.bauen}",
         "ELO_MCPB_CREDENTIAL_FILE": "${user_config.credential_file}",
         "ELO_MCPB_CLIENT_DIR": "${user_config.client_dir}",
-        "ELO_MCPB_ARCHIV": "${user_config.archiv}"
+        "ELO_MCPB_ARCHIV": "${user_config.archiv}",
+        "ELO_MCPB_NAME": "${user_config.name}",
+        "ELO_MCPB_IX_URL2": "${user_config.ix_url2}",
+        "ELO_MCPB_NAME2": "${user_config.name2}",
+        "ELO_MCPB_SCHREIBEN2": "${user_config.schreiben2}",
+        "ELO_MCPB_BAUEN2": "${user_config.bauen2}",
+        "ELO_MCPB_CREDENTIAL_FILE2": "${user_config.credential_file2}",
+        "ELO_MCPB_ARCHIV2": "${user_config.archiv2}"
       }
     }
   },
@@ -60,16 +67,58 @@
       "description": "Mit Set-EloCredential.ps1 angelegte Datei, z. B. für ein zweites Konto. Leer lassen für %LOCALAPPDATA%\\elo-mcp\\elo-credential.xml.",
       "required": false
     },
-    "client_dir": {
-      "type": "directory",
-      "title": "Ordner des ELO Client (optional)",
-      "description": "Nur nötig, wenn der ELO Client bzw. ELO Java Client nicht unter Programme liegt: der Ordner mit jre\\bin\\java.exe und lib.",
-      "required": false
-    },
     "archiv": {
       "type": "string",
       "title": "Archivname (optional)",
       "description": "Name des Archivs in den Hinweisen an die KI, z. B. \"der Muster GmbH (Test)\".",
+      "required": false
+    },
+    "name": {
+      "type": "string",
+      "title": "Kurzname (nur bei zwei Archiven)",
+      "description": "Name, mit dem die KI dieses Archiv anspricht, z. B. Produktiv. Ohne Angabe 1.",
+      "required": false
+    },
+    "ix_url2": {
+      "type": "string",
+      "title": "Archiv 2: IX-URL (optional)",
+      "description": "Zweites Archiv, z. B. das Testarchiv. Dann hat jedes Werkzeug den Parameter archiv, ohne Angabe gilt das erste Archiv. Leer lassen für nur ein Archiv.",
+      "required": false
+    },
+    "name2": {
+      "type": "string",
+      "title": "Archiv 2: Kurzname",
+      "description": "Name, mit dem die KI das zweite Archiv anspricht, z. B. Test. Ohne Angabe 2.",
+      "required": false
+    },
+    "schreiben2": {
+      "type": "boolean",
+      "title": "Archiv 2: Schreiben freischalten",
+      "description": "Stufe 2 nur für das zweite Archiv.",
+      "default": false
+    },
+    "bauen2": {
+      "type": "boolean",
+      "title": "Archiv 2: Bauen freischalten",
+      "description": "Stufe 3 nur für das zweite Archiv. Am besten nur, wenn es ein Testarchiv ist.",
+      "default": false
+    },
+    "credential_file2": {
+      "type": "file",
+      "title": "Archiv 2: Zugangsdatei (optional)",
+      "description": "Mit Set-EloCredential.ps1 angelegte Datei für das zweite Archiv. Leer lassen für dieselbe wie oben.",
+      "required": false
+    },
+    "archiv2": {
+      "type": "string",
+      "title": "Archiv 2: Archivname (optional)",
+      "description": "Name des zweiten Archivs in den Hinweisen an die KI, z. B. \"der Muster GmbH (Test)\".",
+      "required": false
+    },
+    "client_dir": {
+      "type": "directory",
+      "title": "Ordner des ELO Client (optional)",
+      "description": "Nur nötig, wenn der ELO Client bzw. ELO Java Client nicht unter Programme liegt: der Ordner mit jre\\bin\\java.exe und lib.",
       "required": false
     }
   },

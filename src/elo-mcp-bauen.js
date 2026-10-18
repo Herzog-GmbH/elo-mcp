@@ -23,7 +23,7 @@ var FUNC_ICON = "(B7E96A85-0C63-B6AD-42E5-BA9F0018F01F)";
 var PERSON_ICON = "(E10E1000-E100-E100-E100-E10E10E10EE2)";
 
 function bauenPruefen() {
-  if (!BAUEN_ERLAUBT) fail("Bauen ist nicht freigeschaltet (elo-mcp.ps1 -Bauen).");
+  if (!BAUEN_ERLAUBT) fail("Bauen" + freischaltHinweis(3));
 }
 
 function sicherungsOrdner() {

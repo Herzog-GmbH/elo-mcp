@@ -77,7 +77,7 @@ Für Claude Desktop gibt es den Server auch als Paket (MCPB), ohne Git und ohne 
    powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\Downloads\Set-EloCredential.ps1"
    ```
 3. In Claude Desktop unter **Einstellungen → Erweiterungen → Erweiterte Einstellungen → Erweiterung installieren** (Settings → Extensions → Advanced settings → Install Extension) die `.mcpb`-Datei wählen.
-4. **IX-URL** eintragen. Schreiben und Bauen nur bei Bedarf einschalten. Zugangsdatei und Client-Ordner bleiben leer, solange ihr die Standards nutzt.
+4. **IX-URL** eintragen. Schreiben und Bauen nur bei Bedarf einschalten. Zugangsdatei und Client-Ordner bleiben leer, solange ihr die Standards nutzt. Für ein zweites Archiv (z. B. Test) die Felder „Archiv 2“ ausfüllen und beiden Archiven einen Kurznamen geben, siehe [Zwei Archive](#zwei-archive).
 5. In einem neuen Chat „Wer bin ich in ELO?" fragen.
 
 Im Paket stecken nur die Skripte aus diesem Repo (rund 70 KB). Java und die ELO-Bibliotheken kommen wie sonst aus dem installierten ELO Client. Für ein Update installiert ihr einfach die neue `.mcpb`.
@@ -96,9 +96,24 @@ Alle Schalter stehen hinter dem Skriptpfad in der Client-Konfiguration.
 | `-Archiv "<name>"` | Name des Archivs in den Hinweisen an die KI, z. B. `"der Muster GmbH (Test)"` |
 | `-TextDatumJJJJMMTT` | Hausregel mancher Archive: Textfelder, deren Name auf `DAT`/`DATUM` endet, bekommen Datumsangaben als `JJJJMMTT` |
 | `-LeerlaufMinuten <n>` | Java nach so vielen Minuten ohne Aufruf beenden (Standard 10, nicht unter 5) |
-| `-Direkt` | ohne Vorschalt, Java sofort starten (Rückfall bei Problemen) |
+| `-Direkt` | ohne Vorschalt, Java sofort starten (Rückfall bei Problemen, nur ein Archiv) |
+| `-IxUrl2 <url>` | zweites Archiv, z. B. das Testarchiv (siehe unten) |
+| `-Name <name>`, `-Name2 <name>` | Kurznamen der beiden Archive für den Parameter `archiv`, z. B. `Produktiv` und `Test` (Standard `1` und `2`) |
+| `-Schreiben2`, `-Bauen2` | Stufen nur für das zweite Archiv |
+| `-CredentialFile2 <pfad>`, `-Archiv2 "<name>"` | Zugangsdaten (Standard: dieselben wie fürs erste) und Archivname für das zweite Archiv |
 
-Empfehlung: ein Eintrag `elo` für das Produktivarchiv (nur lesen oder mit `-Schreiben`) und ein zweiter `elo-test` für das Testarchiv mit `-Schreiben -Bauen`.
+### Zwei Archive
+
+Ein Eintrag kann zwei Archive bedienen, z. B. Produktiv nur lesend und Test mit allen Stufen:
+
+```powershell
+claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Tools\elo-mcp\elo-mcp.ps1" -IxUrl "https://elo.example.com:9093/ix-Archiv/ix" -Name Produktiv -IxUrl2 "https://elo-test.example.com:9093/ix-Archiv/ix" -Name2 Test -Schreiben2 -Bauen2
+```
+
+- Jedes Werkzeug hat dann den Parameter `archiv` (`Produktiv` oder `Test`). Ohne Angabe gilt das erste Archiv. Ihr sagt der KI einfach „im Test“ oder „in Produktiv“.
+- Die Stufen gelten je Archiv. Im Beispiel kann die KI in Produktiv nichts ändern, auch wenn sie es versucht. Schreib- und Bauwerkzeuge sagen in ihrer Beschreibung, in welchem Archiv sie gehen.
+- Jedes Archiv läuft in einem eigenen Java-Prozess, der erst beim ersten Aufruf startet. Verbindungen, Zwischenspeicher und Tokens mischen sich nicht. Ein Token aus einer Vorschau im Test wirkt nie in Produktiv.
+- `elo_whoami`, jede Vorschau und das Protokoll nennen das Archiv. Objekt-IDs, Masken und Vorlagen gelten nur im jeweiligen Archiv.
 
 ## Werkzeuge
 
@@ -164,7 +179,7 @@ Neu laden (ELOas, IX-Skripte) und „Aktualisieren" im Formulardesigner bleiben 
 MCP-Clients starten jeden Server einmal je Sitzung. Eine JVM je Sitzung kostet rund 650 MB, auch wenn ELO nie gebraucht wird. Deshalb steht `elo-mcp.ps1` als schlanker Vorschalt (rund 75 MB) vor Java:
 
 - `initialize`, `tools/list` und `ping` beantwortet der Vorschalt aus `%LOCALAPPDATA%\elo-mcp\werkzeuge-<hash>.txt`. Nach einer Änderung an Code oder Schaltern holt die erste Sitzung die Liste einmal von Java.
-- Java startet erst beim ersten Werkzeugaufruf (2–8 s) und endet nach 10 Minuten ohne Aufruf. Die JVM läuft mit `-XX:+UseSerialGC -Xms32m -XX:TieredStopAtLevel=1` (rund 90–130 MB).
+- Java startet erst beim ersten Werkzeugaufruf (2–8 s) und endet nach 10 Minuten ohne Aufruf. Die JVM läuft mit `-XX:+UseSerialGC -Xms32m -XX:TieredStopAtLevel=1` (rund 90–130 MB). Bei zwei Archiven gilt das je Archiv.
 
 ## Grenzen
 

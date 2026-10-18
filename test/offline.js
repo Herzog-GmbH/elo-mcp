@@ -37,6 +37,33 @@ var unbekannt = handle({ jsonrpc: "2.0", id: 3, method: "gibtsnicht" });
 pruefe("unbekannte Methode -> -32601", !!(unbekannt.error && unbekannt.error.code === -32601));
 pruefe("Benachrichtigung ohne Antwort", handle({ jsonrpc: "2.0", method: "notifications/initialized" }) === null);
 
+/* ---------- Mehrere Archive (Lauf "zwei Archive" in offline.ps1: dieser Prozess ist das zweite) ---------- */
+
+if (mehrereArchive()) {
+  var ins = init.result.instructions, mitParam = true, alleNamen = true, sf = null;
+  pruefe("Archive: Hinweise nennen beide Archive und den Standard",
+         ins.indexOf("'" + ARCHIVE[0].name + "' (Standard)") >= 0 && ins.indexOf("'" + ARCHIVE[1].name + "'") >= 0, ins);
+  for (var a1 = 0; a1 < liste.length; a1++) {
+    var pa = liste[a1].inputSchema.properties.archiv;
+    if (!pa) mitParam = false; else if (pa.enum.join("|") !== archivNamen().join("|")) alleNamen = false;
+    if (liste[a1].name === "elo_set_fields") sf = liste[a1];
+  }
+  pruefe("Archive: jedes Werkzeug hat den Parameter archiv", mitParam);
+  pruefe("Archive: archiv bietet alle Namen an", alleNamen);
+  pruefe("Archive: Schreibwerkzeug nennt das Archiv, in dem es geht", !!sf && /Nur im Archiv 'Test'/.test(sf.description), sf && sf.description);
+  pruefe("Archive: Hinweis bei gesperrter Stufe nennt das Archiv", /im Archiv 'Test'/.test(freischaltHinweis(2)), freischaltHinweis(2));
+  var fremd = callTool("elo_whoami", { archiv: ARCHIVE[0].name });
+  pruefe("Archive: Aufruf fuer das andere Archiv abgelehnt", fremd.isError && /bedient das Archiv 'Test'/.test(fremd.content[0].text), fremd.content[0].text);
+  // eigenes Archiv: der Parameter wird entfernt, bevor das Werkzeug die Argumente sieht
+  tool("test_echo", "Gibt die Argumente zurueck (nur fuer den Offline-Test).", {}, [], function (a) { return a; });
+  var echo = callTool("test_echo", { archiv: ARCHIV_NAME.toUpperCase(), x: "1" }), eo = JSON.parse(echo.content[0].text);
+  pruefe("Archive: eigenes Archiv (Gross-/Kleinschreibung egal), archiv entfernt", !echo.isError && eo.x === "1" && eo.archiv === undefined, echo.content[0].text);
+} else {
+  var einzeln = callTool("elo_whoami", { archiv: "Test" });
+  pruefe("ein Archiv: Parameter archiv abgelehnt", einzeln.isError && /nur ein Archiv/.test(einzeln.content[0].text), einzeln.content[0].text);
+  pruefe("ein Archiv: kein Parameter archiv in tools/list", !liste[0].inputSchema.properties.archiv);
+}
+
 /* ---------- Zwei-Schritt-Ablauf (Vorschau und Token) ---------- */
 
 function fange(f) { try { f(); return ""; } catch (e) { return e && e.userError ? String(e.userError) : String(e); } }
@@ -51,6 +78,7 @@ if (SCHREIBEN_ERLAUBT) {
 
   var v1 = zweiSchritte(TN, { wert: "1" }, plan2, aus2);
   pruefe("Token: erster Aufruf ist nur Vorschau", /^Vorschau/.test(v1.modus) && !!v1.token && laeufe === 0, JSON.stringify(v1));
+  if (mehrereArchive()) pruefe("Token: Vorschau nennt das Archiv", v1.archiv === ARCHIV_NAME, JSON.stringify(v1));
   var r1 = zweiSchritte(TN, { wert: "1", token: v1.token }, plan2, aus2);
   pruefe("Token: zweiter Aufruf fuehrt aus", r1.modus === "ausgefuehrt" && laeufe === 1, JSON.stringify(r1));
   pruefe("Token: Ausfuehrung protokolliert", protokolle.length === 1 && protokolle[0].werkzeug === TN && !protokolle[0].fehler, JSON.stringify(protokolle));

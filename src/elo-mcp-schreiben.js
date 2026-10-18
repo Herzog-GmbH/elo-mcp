@@ -29,6 +29,7 @@ function protokoll(eintrag) {
     eintrag.zeit = S(new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").format(new java.util.Date()));
     try { eintrag.konto = S(ELO.connect().getLoginResult().getUser().getName()); } catch (e) {}
     eintrag.server = S(java.lang.System.getenv("ELO_IX_URL"));
+    if (ARCHIV_NAME) eintrag.archiv = ARCHIV_NAME;
     var w = new java.io.OutputStreamWriter(new java.io.FileOutputStream(new java.io.File(dir, "protokoll-" + monat + ".jsonl"), true), "UTF-8");
     try { w.write(JSON.stringify(eintrag) + "\n"); } finally { w.close(); }
   } catch (e) { log("Protokoll nicht geschrieben: " + e); }
@@ -46,13 +47,13 @@ function argsKey(a) {
 
 function zweiSchritte(name, a, pruefen, ausfuehren) {
   var st = HANDLERS[name] ? HANDLERS[name].stufe : 2;
-  if (!stufeFrei(st)) fail("Werkzeug " + name + " ist nicht freigeschaltet (elo-mcp.ps1 " + (st === 3 ? "-Bauen" : "-Schreiben") + ").");
+  if (!stufeFrei(st)) fail("Werkzeug " + name + freischaltHinweis(st));
   var plan = pruefen(a), key = argsKey(a);
   if (!a.token) {
     var tok = S(java.util.UUID.randomUUID()).substring(0, 13);
     for (var t in PENDING) if (PENDING[t].ablauf < java.lang.System.currentTimeMillis()) delete PENDING[t];
     PENDING[tok] = { name: name, key: key, fp: plan.fp, ablauf: java.lang.System.currentTimeMillis() + TOKEN_MS };
-    return { modus: "Vorschau - noch nichts geaendert", vorschau: plan.vorschau, warnungen: plan.warnungen || [], token: tok,
+    return { modus: "Vorschau - noch nichts geaendert", archiv: ARCHIV_NAME || undefined, vorschau: plan.vorschau, warnungen: plan.warnungen || [], token: tok,
              naechsterSchritt: "Vorschau dem Anwender zeigen. Nach Zustimmung dasselbe Werkzeug mit denselben Argumenten und token=\"" + tok + "\" aufrufen. Gueltig 5 Minuten, einmal." };
   }
   var p = PENDING[S(a.token)];
@@ -65,7 +66,7 @@ function zweiSchritte(name, a, pruefen, ausfuehren) {
   try { res = ausfuehren(plan); }
   catch (e) { protokoll({ werkzeug: name, argumente: JSON.parse(key), fehler: errText(e) }); throw e; }
   protokoll({ werkzeug: name, argumente: JSON.parse(key), ergebnis: res });
-  return { modus: "ausgefuehrt", ergebnis: res };
+  return { modus: "ausgefuehrt", archiv: ARCHIV_NAME || undefined, ergebnis: res };
 }
 
 /* ---------- Masken und Felder ---------- */

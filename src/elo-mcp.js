@@ -17,7 +17,7 @@
  */
 
 var IXC = Packages.de.elo.ix.client;
-var SERVER_NAME = "elo", SERVER_VERSION = "0.5.0";
+var SERVER_NAME = "elo", SERVER_VERSION = "0.6.0";
 var LIMIT = { suche: 50, liste: 300, aufgaben: 50, workflows: 20, aktiveKnoten: 5, textZeichen: 50000, dateiBytes: 20 * 1024 * 1024 };
 
 /* ---------- stdio ---------- */
@@ -54,6 +54,24 @@ var SCHREIBEN_ERLAUBT = envFlag("ELO_MCP_SCHREIBEN");
 var BAUEN_ERLAUBT = envFlag("ELO_MCP_BAUEN");
 function stufeFrei(st) { return st === 1 || (st === 2 && SCHREIBEN_ERLAUBT) || (st === 3 && BAUEN_ERLAUBT); }
 function stufenText() { return "1 lesen" + (SCHREIBEN_ERLAUBT ? ", 2 arbeiten" : "") + (BAUEN_ERLAUBT ? ", 3 bauen" : ""); }
+
+/* Mehrere Archive: elo-mcp.ps1 startet je Archiv einen eigenen Java-Prozess und gibt jedem die Liste
+   aller Archive (ELO_MCP_ARCHIVE, JSON: name, stufen, schreiben, bauen, text) und den eigenen Namen
+   (ELO_MCP_ARCHIV_NAME) mit. Jedes Werkzeug bekommt dann den Parameter archiv; der Vorschalt leitet
+   danach weiter, dieser Prozess prueft nur noch, dass der Aufruf fuer ihn gedacht ist. */
+var ARCHIVE = (function () {
+  var t = trim(java.lang.System.getenv("ELO_MCP_ARCHIVE"));
+  if (!t) return [];
+  try { var a = JSON.parse(t); return (a instanceof Array) ? a : []; }
+  catch (e) { log("ELO_MCP_ARCHIVE ist kein gueltiges JSON, ignoriert"); return []; }
+})();
+var ARCHIV_NAME = trim(java.lang.System.getenv("ELO_MCP_ARCHIV_NAME"));
+function mehrereArchive() { return ARCHIVE.length > 1; }
+function archivNamen() { var n = []; for (var i = 0; i < ARCHIVE.length; i++) n.push(S(ARCHIVE[i].name)); return n; }
+function freischaltHinweis(st) {
+  return mehrereArchive() ? " ist im Archiv '" + ARCHIV_NAME + "' nicht freigeschaltet (" + (st === 3 ? "Bauen" : "Schreiben") + " fuer dieses Archiv einschalten)."
+                          : " ist nicht freigeschaltet (elo-mcp.ps1 " + (st === 3 ? "-Bauen" : "-Schreiben") + ").";
+}
 
 function pathOf(s) {
   try {
@@ -291,17 +309,35 @@ function tool(name, description, props, required, fn, stufe) {
 
 function freieWerkzeuge() {
   var out = [];
-  for (var i = 0; i < TOOLS.length; i++) if (stufeFrei(HANDLERS[TOOLS[i].name].stufe)) out.push(TOOLS[i]);
+  for (var i = 0; i < TOOLS.length; i++) if (stufeFrei(HANDLERS[TOOLS[i].name].stufe)) out.push(mehrereArchive() ? mitArchiv(TOOLS[i]) : TOOLS[i]);
   return out;
+}
+
+/* Werkzeug mit dem Parameter archiv; bei Stufe 2/3 steht in der Beschreibung, in welchen Archiven es geht. */
+function mitArchiv(t) {
+  var st = HANDLERS[t.name].stufe, props = {}, teile = [], frei = [];
+  for (var k in t.inputSchema.properties) props[k] = t.inputSchema.properties[k];
+  for (var i = 0; i < ARCHIVE.length; i++) {
+    var a = ARCHIVE[i];
+    teile.push("'" + S(a.name) + "'" + (i === 0 ? " (Standard)" : "") + ": Stufen " + S(a.stufen) + (a.text ? ", " + S(a.text) : ""));
+    if (st === 1 || (st === 2 && a.schreiben) || (st === 3 && a.bauen)) frei.push("'" + S(a.name) + "'");
+  }
+  props.archiv = { type: "string", enum: archivNamen(),
+                   description: "ELO-Archiv. " + teile.join("; ") + ". Ohne Angabe '" + S(ARCHIVE[0].name) + "'. Objekt-IDs, Masken und Vorlagen gelten nur im jeweiligen Archiv." };
+  return { name: t.name,
+           description: t.description + (st > 1 && frei.length < ARCHIVE.length ? " Nur im Archiv " + frei.join(", ") + "." : ""),
+           inputSchema: { type: "object", properties: props, required: t.inputSchema.required, additionalProperties: false },
+           annotations: t.annotations };
 }
 
 var P_OBJ = { type: "string", description: "Objekt-ID, GUID oder Archivpfad (z. B. 'Administration/ELOas Base')" };
 
 tool("elo_whoami", "Zeigt, mit welchem ELO-Konto und gegen welchen Server dieser MCP-Server arbeitet.", {}, [], function () {
   var conn = ELO.connect(), u = conn.getLoginResult().getUser();
-  return { konto: S(u.getName()), id: S(u.getId()), server: S(java.lang.System.getenv("ELO_IX_URL")),
+  return { archiv: ARCHIV_NAME || undefined, konto: S(u.getName()), id: S(u.getId()), server: S(java.lang.System.getenv("ELO_IX_URL")),
            ixVersion: S(conn.getVersion()), mcpVersion: SERVER_VERSION, stufen: stufenText(),
-           schreibenErlaubt: SCHREIBEN_ERLAUBT, bauenErlaubt: BAUEN_ERLAUBT };
+           schreibenErlaubt: SCHREIBEN_ERLAUBT, bauenErlaubt: BAUEN_ERLAUBT,
+           archive: mehrereArchive() ? archivNamen() : undefined };
 });
 
 tool("elo_search",
@@ -544,17 +580,27 @@ function isSessionError(e) { return /ELOIX:(2001|5005)|INVALID_SESSION|ticket.*(
 function callTool(name, args) {
   var h = HANDLERS[name];
   if (!h) return { content: [{ type: "text", text: "Unbekanntes Werkzeug: " + name }], isError: true };
-  if (!stufeFrei(h.stufe)) return { content: [{ type: "text", text: "Fehler: Werkzeug " + name + " ist nicht freigeschaltet (elo-mcp.ps1 " + (h.stufe === 3 ? "-Bauen" : "-Schreiben") + ")." }], isError: true };
+  args = args || {};
+  if (args.archiv !== undefined && args.archiv !== null) {
+    // Den Parameter selbst sieht kein Werkzeug (und kein Token-Vergleich); hier nur pruefen, dass der Aufruf hierher gehoert.
+    var gewuenscht = trim(args.archiv);
+    delete args.archiv;
+    if (gewuenscht && !mehrereArchive())
+      return { content: [{ type: "text", text: "Fehler: Es ist nur ein Archiv eingerichtet, der Parameter archiv entfaellt." }], isError: true };
+    if (gewuenscht && gewuenscht.toLowerCase() !== ARCHIV_NAME.toLowerCase())
+      return { content: [{ type: "text", text: "Fehler: Dieser Prozess bedient das Archiv '" + ARCHIV_NAME + "', nicht '" + gewuenscht + "'." }], isError: true };
+  }
+  if (!stufeFrei(h.stufe)) return { content: [{ type: "text", text: "Fehler: Werkzeug " + name + freischaltHinweis(h.stufe) }], isError: true };
   var fn = h.fn;
   var t0 = java.lang.System.currentTimeMillis();
   try {
     var r;
-    try { r = fn(args || {}); }
+    try { r = fn(args); }
     catch (e) {
       // Schreibende Werkzeuge nie automatisch wiederholen - sonst droht doppelte Ausfuehrung.
       if (h.schreibt || !isSessionError(e)) throw e;
       log("Sitzung abgelaufen, melde neu an");
-      ELO.close(); r = fn(args || {});
+      ELO.close(); r = fn(args);
     }
     log(name + " ok (" + (java.lang.System.currentTimeMillis() - t0) + " ms)");
     return { content: [{ type: "text", text: JSON.stringify(r, null, 1) }] };
@@ -565,9 +611,19 @@ function callTool(name, args) {
 }
 
 function anweisungen() {
-  var archiv = trim(java.lang.System.getenv("ELO_MCP_ARCHIV"));
-  var t = "ELO-Archiv" + (archiv ? " " + archiv : "") + ", Zugriff mit den Rechten des angemeldeten Benutzers (Stufen: " + stufenText() + "). " +
-          "Eng suchen (Ordner, Maske, Felder), keine Massenabfragen. Workflows nur zu einem Objekt oder per ID.";
+  var archiv = trim(java.lang.System.getenv("ELO_MCP_ARCHIV")), t;
+  if (mehrereArchive()) {
+    var teile = [];
+    for (var i = 0; i < ARCHIVE.length; i++)
+      teile.push("'" + S(ARCHIVE[i].name) + "'" + (i === 0 ? " (Standard)" : "") + (ARCHIVE[i].text ? " = " + S(ARCHIVE[i].text) : "") + ", Stufen " + S(ARCHIVE[i].stufen));
+    t = ARCHIVE.length + " ELO-Archive, Zugriff mit den Rechten des angemeldeten Benutzers: " + teile.join("; ") + ". " +
+        "Jedes Werkzeug hat den Parameter archiv, ohne Angabe gilt '" + S(ARCHIVE[0].name) + "'. Das Archiv nur wechseln, wenn der Anwender es will, " +
+        "und in der Antwort nennen. Objekt-IDs, Masken und Vorlagen gelten nur im jeweiligen Archiv. " +
+        "Eng suchen (Ordner, Maske, Felder), keine Massenabfragen. Workflows nur zu einem Objekt oder per ID.";
+  } else {
+    t = "ELO-Archiv" + (archiv ? " " + archiv : "") + ", Zugriff mit den Rechten des angemeldeten Benutzers (Stufen: " + stufenText() + "). " +
+        "Eng suchen (Ordner, Maske, Felder), keine Massenabfragen. Workflows nur zu einem Objekt oder per ID.";
+  }
   if (SCHREIBEN_ERLAUBT || BAUEN_ERLAUBT)
     t += " Schreibende Werkzeuge arbeiten zweistufig: erster Aufruf ohne token liefert eine Vorschau und ein token; " +
          "erst der zweite Aufruf mit denselben Argumenten plus token fuehrt aus. Die Vorschau dem Anwender zeigen " +

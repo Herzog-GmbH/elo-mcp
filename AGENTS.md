@@ -24,7 +24,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\test\offline.ps1
 Am Ende muss „Offline-Test bestanden" stehen.
 
 ## Schritt 2 – IX-URL klären
-Frag den Menschen nach der IX-URL. Sie steht im Anmeldeprofil des ELO Java Client oder kommt vom ELO-Administrator, z. B. `https://elo.example.com:9093/ix-Archiv/ix`. Frag auch, ob es ein Testarchiv gibt.
+Frag den Menschen nach der IX-URL. Sie steht im Anmeldeprofil des ELO Java Client oder kommt vom ELO-Administrator, z. B. `https://elo.example.com:9093/ix-Archiv/ix`. Frag auch, ob es ein Testarchiv gibt. Wenn ja, kommt es als zweites Archiv in denselben Eintrag (`-IxUrl2 … -Name Produktiv -Name2 Test`, Stufen dafür mit `-Schreiben2`/`-Bauen2`, siehe README „Zwei Archive“).
 
 ## Schritt 3 – Zugangsdaten (Mensch)
 Der Mensch führt in einem eigenen Terminal aus:

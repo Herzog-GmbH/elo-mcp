@@ -46,8 +46,21 @@ $v = Wert "ELO_MCPB_ARCHIV";          if ($v) { $p.Archiv = $v }
 if (Schalter "ELO_MCPB_SCHREIBEN") { $p.Schreiben = $true }
 if (Schalter "ELO_MCPB_BAUEN")     { $p.Bauen = $true }
 
+# Zweites Archiv nur mit IX-URL; die uebrigen Felder dafuer bleiben sonst unbeachtet.
+$v = Wert "ELO_MCPB_IX_URL2"
+if ($v) {
+  $p.IxUrl2 = $v
+  $v = Wert "ELO_MCPB_NAME";  if ($v) { $p.Name = $v }
+  $v = Wert "ELO_MCPB_NAME2"; if ($v) { $p.Name2 = $v }
+  $v = Pfad "ELO_MCPB_CREDENTIAL_FILE2" "Zugangsdatei fuer Archiv 2" "Leaf"; if ($v) { $p.CredentialFile2 = $v }
+  $v = Wert "ELO_MCPB_ARCHIV2"; if ($v) { $p.Archiv2 = $v }
+  if (Schalter "ELO_MCPB_SCHREIBEN2") { $p.Schreiben2 = $true }
+  if (Schalter "ELO_MCPB_BAUEN2")     { $p.Bauen2 = $true }
+}
+
 # Nicht an Java weiterreichen; elo-mcp.ps1 setzt seine eigenen Variablen.
-foreach ($n in "IX_URL", "CREDENTIAL_FILE", "CLIENT_DIR", "ARCHIV", "SCHREIBEN", "BAUEN") {
+foreach ($n in "IX_URL", "CREDENTIAL_FILE", "CLIENT_DIR", "ARCHIV", "SCHREIBEN", "BAUEN",
+               "NAME", "IX_URL2", "NAME2", "CREDENTIAL_FILE2", "ARCHIV2", "SCHREIBEN2", "BAUEN2") {
   Remove-Item "env:ELO_MCPB_$n" -ErrorAction SilentlyContinue
 }
 
