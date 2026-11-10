@@ -17,7 +17,7 @@
  */
 
 var IXC = Packages.de.elo.ix.client;
-var SERVER_NAME = "elo", SERVER_VERSION = "0.6.0";
+var SERVER_NAME = "elo", SERVER_VERSION = "0.7.0";
 var LIMIT = { suche: 50, liste: 300, aufgaben: 50, workflows: 20, aktiveKnoten: 5, textZeichen: 50000, dateiBytes: 20 * 1024 * 1024 };
 
 /* ---------- stdio ---------- */

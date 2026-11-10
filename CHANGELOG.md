@@ -1,5 +1,16 @@
 # Änderungen
 
+## 0.7.0 – 2026-11-10
+
+- **Verschlagwortungsmasken** lesen und bauen, vier neue Werkzeuge (jetzt 26):
+  - `elo_mask` (Stufe 1): Art, Reiter samt Namen, alle Felder in Maskenreihenfolge mit Typ, Reiter, Zeile, Spalten, Länge, Pflicht und Rechten, dazu eine Layout-Prüfung.
+  - `elo_mask_create` (Stufe 3): neue Maske als Kopie einer vorhandenen, alle oder ausgewählte Felder, andere Anzeigenamen und Reiter, Dokument-, Ordner- oder reine Suchmaske.
+  - `elo_mask_fields` (Stufe 3): Felder hinten anhängen (nächste freie Zeile oder direkt unter einem Feld) oder vorhandene ändern (Name, Typ, Länge, Spalte, nur Stichwortliste, Pflicht, Rechte).
+  - `elo_mask_tabs` (Stufe 3): Reiter benennen, Felder auf einen anderen Reiter oder Platz verschieben, Zeilen lückenlos ordnen.
+- Fest eingebaute Regeln aus echten Störungen: Reiter mit Namen, Reiter 0 ab Zeile 4, Rechte an jeder Zeile, Eingabefeld nach der Beschriftung, keine Klammern im Anzeigenamen, Reihenfolge der Zeilen bleibt, IDs 50 bis 59 frei. Details in `docs/FALLEN.md`.
+- Wie beim übrigen Bauen: Vorschau und Einmal-Token, Sicherung der Maske als JSON vorher und nachher unter `%LOCALAPPDATA%\elo-mcp\sicherung`, nach dem Speichern zurücklesen und vergleichen. Löschen gibt es nicht.
+- Offline-Test mit Maskenprüfungen (86/106/112 Prüfungen).
+
 ## 0.6.0 – 2026-10-18
 
 - **Zwei Archive in einem Eintrag**, z. B. Produktiv und Test: `-IxUrl2` mit `-Name`/`-Name2` (Kurznamen), `-Schreiben2`, `-Bauen2`, `-CredentialFile2`, `-Archiv2`. Im Paket für Claude Desktop als „Archiv 2" in den Einstellungen.

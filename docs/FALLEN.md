@@ -29,6 +29,14 @@ Was uns beim Bau dieses Servers begegnet ist, geprüft gegen einen Indexserver 2
 |---|---|
 | Stichwortlisten liefern einen Wurzeleintrag „Stichwörter für Feldgruppe …" mit. | Beim Prüfen ignorieren. |
 | In manchen Archiven sind Datumsfelder als **Textfeld** angelegt. ELO prüft dort nichts. | Echte Datumsfelder (Typ `TYPE_ISO_DATE`) als `JJJJMMTT000000` schreiben. Für Textfelder gilt die Hausregel des Archivs, hier wählbar mit `-TextDatumJJJJMMTT`. |
+| `DocMaskLine.tabIndex` ist die **Nummer** des Reiters, nicht die Reihenfolge. Die Reiternamen stehen im Maskentext, getrennt durch `\|` (`Basis\|Termine\|\|\|`). Ein Reiter ohne Namen erscheint im Client als „Index1" usw. | Reiter erst im Maskentext benennen, dann Felder darauf legen. |
+| Auf Reiter 0 belegen Kurzbezeichnung, Datum und Ablagedatum die Zeilen 1 bis 3. Ein Feld in Zeile 1 bis 3 liegt über diesen Feldern. | Indexfelder auf Reiter 0 ab Zeile 4, auf anderen Reitern ab Zeile 1, fortlaufend. |
+| Eine Maskenzeile **ohne Rechte** (`aclItems` leer) zeigt ihren Wert nur Administratoren. Alle anderen sehen ein leeres Feld, auch wenn der Wert gesetzt ist. | Jede Zeile bekommt Rechte, z. B. wie die übrigen Zeilen der Maske. |
+| Beginnt das Eingabefeld (`editCol`) vor dem Ende der Beschriftung, liegt die Beschriftung unter dem Feld. | `editCol` mindestens 14, bei langen Beschriftungen etwa Länge − 1 (26 für „Kündigungsfrist in Monaten"). |
+| Programme, die Felder nach Position auswerten (z. B. der Maskenbaustein von ACTIWARE BLP), greifen nach dem Umsortieren der Zeilen auf falsche Felder. | Neue Felder nur hinten anhängen. Für eine andere Anzeige nur Reiter, Zeile und Spalte ändern, nicht die Reihenfolge. |
+| Klammern im Anzeigenamen stören Platzhalter wie `[NDF.<Name>]`: `(` startet dort eine Formatangabe. | Anzeigenamen ohne Klammern. |
+| Zeilen-IDs 50 bis 59 sind für ELO-Systemfelder reserviert (`ELO_XLINK`, `ELO_FNAME` …), mehr als 199 geht nicht. | Neue IDs nach der höchsten vergeben und 50 bis 59 überspringen. |
+| Eine geänderte Maske sieht der ELO Client erst nach einer Neuanmeldung. | Nach dem Speichern zurücklesen und vergleichen, im Client neu anmelden. |
 
 ## Rechte und Anmeldung
 

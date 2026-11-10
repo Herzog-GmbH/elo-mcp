@@ -6,7 +6,7 @@
 
 [![Getestet mit ELO 25](https://img.shields.io/badge/getestet%20mit-ELO%2025%20(IX%2025.00)-0067b8)](#voraussetzungen)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![22 Werkzeuge](https://img.shields.io/badge/Werkzeuge-22-2ea44f)](#werkzeuge)
+[![26 Werkzeuge](https://img.shields.io/badge/Werkzeuge-26-2ea44f)](#werkzeuge)
 [![Vorschau und Token](https://img.shields.io/badge/Schreiben-Vorschau%20%2B%20Token-e36209)](#sicherheit)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#voraussetzungen)
@@ -26,7 +26,7 @@ Ein [MCP](https://modelcontextprotocol.io/)-Server für das **ELO ECM** der ELO 
 - **Jeder MCP-Client:** Claude Code, Claude Desktop, Codex, GitHub Copilot, Gemini CLI, Cursor, … ([docs/CLIENTS.md](docs/CLIENTS.md))
 - **Rechte je Person:** Der Server läuft lokal beim Anwender und meldet sich mit dessen eigenem ELO-Konto an. ELO prüft jeden Zugriff selbst. Kein Dienstkonto, kein Nachbau von Rechten.
 - **Mehr als Suchen:** Volltext- und Feldsuche, Textauszug aus PDF/Office/E-Mail, wirksame Rechte mit Herkunft, Workflows lesen, starten und weiterleiten.
-- **Bauen mit Prüfungen:** Workflow-Vorlagen als JSON-Bauplan exportieren, ändern und zurückschreiben. ELOas-Regeln, IX-Skripte und Formularseiten hochladen, vorher kompiliert und auf bekannte Fallen geprüft.
+- **Bauen mit Prüfungen:** Workflow-Vorlagen als JSON-Bauplan exportieren, ändern und zurückschreiben. ELOas-Regeln, IX-Skripte und Formularseiten hochladen, vorher kompiliert und auf bekannte Fallen geprüft. Verschlagwortungsmasken anlegen und erweitern, mit Regeln für Reiter, Zeilen und Rechte.
 - **Drei Stufen:** Lesen ist immer an. Schreiben (`-Schreiben`) und Bauen (`-Bauen`) schaltet ihr einzeln frei. Ohne Schalter sieht die KI die Werkzeuge gar nicht.
 - **Zweistufig schreiben:** Jede Änderung liefert zuerst eine Vorschau und ein Einmal-Token. Erst ein zweiter Aufruf mit Token führt aus.
 - **Schonend für den Indexserver:** eine Anfrage zur Zeit, harte Obergrenzen, keine Massenabfragen über Workflows.
@@ -90,7 +90,7 @@ Alle Schalter stehen hinter dem Skriptpfad in der Client-Konfiguration.
 |---|---|
 | `-IxUrl <url>` | IX-URL des ELO-Servers (Pflicht, alternativ Umgebungsvariable `ELO_IX_URL`) |
 | `-Schreiben` | Stufe 2 freischalten: ablegen, neue Version, Indexfelder, Workflow starten, Aufgabe weiterleiten |
-| `-Bauen` | Stufe 3 freischalten: Workflow-Vorlagen, Skripte, ELOas-Regeln, Formularseiten. **Am besten nur gegen ein Testarchiv.** |
+| `-Bauen` | Stufe 3 freischalten: Workflow-Vorlagen, Skripte, ELOas-Regeln, Formularseiten, Verschlagwortungsmasken. **Am besten nur gegen ein Testarchiv.** |
 | `-CredentialFile <pfad>` | andere Zugangsdaten, z. B. ein zweites Konto für das Testarchiv. Standard `%LOCALAPPDATA%\elo-mcp\elo-credential.xml` |
 | `-ClientDir <pfad>` | Ordner des ELO Client bzw. ELO Java Client, wenn er nicht unter `Programme` liegt |
 | `-Archiv "<name>"` | Name des Archivs in den Hinweisen an die KI, z. B. `"der Muster GmbH (Test)"` |
@@ -134,6 +134,7 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_workflows_of_object` | Laufende (mit aktiven Knoten) oder beendete Workflows zu genau einem Objekt |
 | `elo_my_tasks` | Eigene Aufgaben, auch über Gruppen |
 | `elo_workflow_export` | Vorlage als JSON-Bauplan ([Format](docs/BAUPLAN.md)) |
+| `elo_mask` | Verschlagwortungsmaske: Art, Reiter, alle Felder mit Typ, Reiter, Zeile, Spalten, Länge, Pflicht und Rechten. Dazu eine Layout-Prüfung (Reiter ohne Namen, Felder vor Zeile 4, übereinanderliegende Felder, Felder ohne Rechte, Klammern) |
 
 ### Stufe 2: arbeiten (`-Schreiben`)
 
@@ -155,21 +156,25 @@ Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, 
 | `elo_workflow_build` | Vorlage aus Bauplan anlegen oder ersetzen (ID und Name bleiben). Vorschau mit Änderungsliste, Sicherung `.ewf` vorher und nachher |
 | `elo_script_update` | Neue Version eines Dokuments unter `Administration` (ELOas-Regel, IX-Skript, Formularseite …), Vorschau mit Zeilenvergleich, Kodierung bleibt |
 | `elo_script_create` | Neues Dokument unter `Administration`, Maske, Rechte und Typ vom Vorbild |
+| `elo_mask_create` | Neue Verschlagwortungsmaske als Kopie einer vorhandenen: alle oder ausgewählte Felder, andere Anzeigenamen und Reiter, Dokument-, Ordner- oder reine Suchmaske |
+| `elo_mask_fields` | Felder hinten anhängen (nächste freie Zeile oder direkt unter einem Feld) oder vorhandene ändern: Name, Typ, Länge, Spalte, nur Stichwortliste, Pflicht, Rechte |
+| `elo_mask_tabs` | Reiter benennen, Felder auf einen anderen Reiter oder Platz verschieben, Zeilen lückenlos ordnen |
 
 Die Prüfungen beim Bauen stammen alle aus echten Störungen:
 
 - **Workflows:** genau ein Start, mindestens ein Ende, alle Kanten auf vorhandene Knoten, jeder Knoten erreichbar und mit Weg zum Ende, **jeder Knoten außer Ende hat einen Nachfolger** (sonst bleibt der Vorgang hängen), Entscheidung mit Bedingung, **Sammler mit festem Zähler** (0 leitet beim ersten Vorgänger weiter, -1 bleibt nach übersprungenen IF-Zweigen hängen), Bearbeiter und Formulare existieren.
 - **ELOas-Regeln:** XML wohlgeformt, jeder Skriptteil wird mit Rhino kompiliert.
 - **IX-Skripte:** kompiliert, jeder `//@include` ist auflösbar, `@include` steht nur in den Kopfzeilen, nur ASCII. Ein nicht auflösbarer Include stoppt sonst den **ganzen** Skript-Motor des Indexservers.
+- **Masken:** Felder nur auf Reitern mit Namen (sonst „Index1" im Client), auf Reiter 0 ab Zeile 4 (darüber liegen Kurzbezeichnung und Datum), keine übereinanderliegenden Felder, **Rechte an jeder Zeile** (sonst sehen nur Administratoren den Wert), Eingabefeld nach der Beschriftung, keine Klammern im Anzeigenamen, Zeilen-IDs 50 bis 59 frei. Die Reihenfolge der Zeilen bleibt immer, neue Felder kommen hinten dran. Vorher und nachher eine Sicherung als JSON, nach dem Speichern zurücklesen und vergleichen.
 
-Neu laden (ELOas, IX-Skripte) und „Aktualisieren" im Formulardesigner bleiben Handarbeit. Das sagt der Server nach jeder Änderung dazu.
+Neu laden (ELOas, IX-Skripte), „Aktualisieren" im Formulardesigner und die Neuanmeldung nach einer Maskenänderung bleiben Handarbeit. Das sagt der Server nach jeder Änderung dazu.
 
 ## Sicherheit
 
 - **Eigenes Konto:** ELO prüft jeden Zugriff mit den Rechten der angemeldeten Person. Ein zentraler Server bräuchte ein Dienstkonto mit Hauptadministrator-Recht: Die Anmeldung im Namen anderer (`runAsUser`) lehnt der Indexserver für normale Konten ab. Ein solches Konto vermeidet dieser Server bewusst, er läuft lokal mit dem Konto der Person.
 - **Zugangsdaten:** per DPAPI verschlüsselt, nur für euer Windows-Konto lesbar. Der Vorschalt entschlüsselt sie erst beim Java-Start und gibt sie nur an den Java-Prozess weiter.
 - **Zweistufig:** Erster Aufruf = Prüfung + Vorschau + Token. Das Token gilt 5 Minuten, einmal, nur für exakt dieselben Argumente und nur, wenn sich das Objekt seit der Vorschau nicht verändert hat (Fingerabdruck aus Name, Maske, Indexfeldern, Sperre, Version). Die Hinweise an die KI verlangen, die Vorschau zu zeigen und auf Zustimmung zu warten.
-- **Nicht im Code:** Löschen, Verschieben, Rechte und Masken ändern. Das ist nicht abgeschaltet, das gibt es schlicht nicht.
+- **Nicht im Code:** Löschen (auch keine Masken und Maskenfelder), Verschieben und Rechte an Objekten ändern. Das ist nicht abgeschaltet, das gibt es schlicht nicht.
 - **Protokoll:** Jede Ausführung, auch fehlgeschlagene, steht in `%LOCALAPPDATA%\elo-mcp\protokoll-JJJJ-MM.jsonl` (Zeit, Konto, Server, Werkzeug, Argumente, Ergebnis).
 - **Keine Wiederholung beim Schreiben:** Lesewerkzeuge melden sich nach einer abgelaufenen Sitzung einmal neu an. Schreibende nie, damit nichts doppelt passiert.
 - **Fremder Text:** Dokumentinhalte (`elo_get_text`) können Anweisungen an die KI enthalten (Prompt-Injection). Lest deshalb jede Vorschau, bevor ihr zustimmt.
@@ -199,8 +204,9 @@ MCP-Clients starten jeden Server einmal je Sitzung. Eine JVM je Sitzung kostet r
 | `src/elo-mcp.js` | Kern, Protokoll, Textauszug, Stufe 1 |
 | `src/elo-mcp-schreiben.js` | Stufe 2, Vorschau/Token, Feldprüfung, Protokoll |
 | `src/elo-mcp-bauen.js` | Stufe 3, Bauplan, Skriptprüfungen |
+| `src/elo-mcp-masken.js` | Masken lesen (Stufe 1) und bauen (Stufe 3), Layout-Regeln |
 | `src/elo-mcp-start.js` | Hauptschleife |
-| `test/offline.ps1` | Prüfungen ohne ELO (Protokoll, Stufen, Bauplan, Skripte) |
+| `test/offline.ps1` | Prüfungen ohne ELO (Protokoll, Stufen, Bauplan, Skripte, Masken) |
 | `test/test-mcp.py` | Aufrufe gegen ein echtes ELO, z. B. `python -I test\test-mcp.py test\beispiel-lesen.json -- -IxUrl <url>` |
 | `mcpb/` | Paket für Claude Desktop: `manifest.json`, Startskript `mcpb-start.ps1` (Einstellungen → Schalter), Symbol |
 | `tools/build-mcpb.ps1` | baut `dist\elo-mcp-<version>.mcpb` und trägt Prüfsumme und Download-URL in `server.json` ein |
