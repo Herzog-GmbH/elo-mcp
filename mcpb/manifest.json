@@ -137,6 +137,7 @@
     { "name": "elo_my_tasks", "description": "Eigene Aufgaben, auch über Gruppen" },
     { "name": "elo_workflow_export", "description": "Workflow-Vorlage als JSON-Bauplan" },
     { "name": "elo_mask", "description": "Verschlagwortungsmaske mit Reitern, Feldern, Rechten und Layout-Prüfung" },
+    { "name": "elo_keywords", "description": "Stichwortliste einer Feldgruppe lesen" },
     { "name": "elo_create_folder", "description": "Ordner anlegen (Stufe 2)" },
     { "name": "elo_create_document", "description": "Lokale Datei als Dokument ablegen (Stufe 2)" },
     { "name": "elo_new_version", "description": "Neue Version eines Dokuments (Stufe 2)" },
@@ -148,7 +149,8 @@
     { "name": "elo_script_create", "description": "Neues Dokument unter Administration (Stufe 3)" },
     { "name": "elo_mask_create", "description": "Neue Verschlagwortungsmaske als Kopie einer vorhandenen (Stufe 3)" },
     { "name": "elo_mask_fields", "description": "Maskenfelder anhängen oder ändern (Stufe 3)" },
-    { "name": "elo_mask_tabs", "description": "Reiter benennen, Felder verschieben, Zeilen ordnen (Stufe 3)" }
+    { "name": "elo_mask_tabs", "description": "Reiter benennen, Felder verschieben, Zeilen ordnen (Stufe 3)" },
+    { "name": "elo_keywords_set", "description": "Stichwortliste anlegen oder Einträge setzen (Stufe 3)" }
   ],
   "tools_generated": false,
   "compatibility": {

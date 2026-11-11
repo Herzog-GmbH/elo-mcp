@@ -7,6 +7,8 @@
  *   elo_mask_create   Neue Maske als Kopie einer vorhandenen (Dokument-, Ordner-, Suchmaske)
  *   elo_mask_fields   Felder hinten anhaengen oder vorhandene aendern
  *   elo_mask_tabs     Reiter benennen, Felder auf einen anderen Reiter verschieben, Zeilen ordnen
+ *   elo_keywords      Stichwortliste lesen
+ *   elo_keywords_set  Stichwortliste anlegen oder Eintraege ergaenzen/ersetzen
  *
  * Fest eingebaute Regeln, alle aus echten Stoerungen (siehe docs/FALLEN.md):
  *   - DocMaskLine.tabIndex ist die Nummer des Reiters, nicht die Reihenfolge. Die Reiternamen stehen im Maskentext,
@@ -552,6 +554,8 @@ function artAus(a, vorbild) {
 function aufbauPlan(vorbild, a) {
   var vz = vorbild.getLines(), da = {}, auswahl = null, umbenennen = {};
   for (var i = 0; i < vz.length; i++) da[keyOf(vz[i])] = true;
+  if (a.ohneFelder && a.felder && a.felder.length) fail("ohneFelder und felder zusammen geht nicht.");
+  if (a.ohneFelder) auswahl = {};
   if (a.felder && a.felder.length) {
     auswahl = {};
     for (var k = 0; k < a.felder.length; k++) {
@@ -566,7 +570,7 @@ function aufbauPlan(vorbild, a) {
     if (!trim(a.namen[n])) fail("namen: leerer Name fuer " + nk + ".");
     umbenennen[nk] = trim(a.namen[n]);
   }
-  return { namen: a.reiter !== undefined ? pruefeReiterNamen(a.reiter) : reiterNamen(vorbild.getText()), auswahl: auswahl, umbenennen: umbenennen };
+  return { namen: a.reiter !== undefined ? pruefeReiterNamen(a.reiter) : reiterNamen(vorbild.getText()), auswahl: auswahl, umbenennen: umbenennen, ohneFelder: !!a.ohneFelder };
 }
 
 /* Zeilen des Vorbilds fuer die neue Maske zurechtlegen: Auswahl, Namen, Reiter mit Namen, Rechte, Spalte, Zeilen je Reiter. */
@@ -584,7 +588,7 @@ function aufbauAnwenden(quelle, plan, rechteVorlage, warn) {
     if (!l.isHidden() && l.getEditCol() < S(l.getName()).length - 1) l.setEditCol(noetigeSpalte(l.getName()));
     out.push(l);
   }
-  if (!out.length) fail("Keine Felder uebrig.");
+  if (!out.length && !plan.ohneFelder) fail("Keine Felder uebrig.");
   var tabs = {};
   for (var k = 0; k < out.length; k++) if (!out[k].isHidden()) tabs[out[k].getTabIndex()] = true;
   for (var t in tabs) ordneReiter(out, parseInt(t, 10));
@@ -618,7 +622,7 @@ var P_RECHTE = { description: "Rechte der Zeile: 'wie' (Standard, wie die erste 
                          { type: "array", items: { type: "object", properties: { name: { type: "string" }, rechte: { type: "string" } }, required: ["name"], additionalProperties: false } }] };
 
 tool("elo_mask_create",
-  "Legt eine neue Verschlagwortungsmaske als Kopie einer vorhandenen an (zweistufig, Stufe 3 bauen). Uebernimmt alle oder ausgewaehlte Felder mit Feldgruppe, Typ, Rechten und Stichwortbindung, dazu Maskenrechte und Dokumentrechte-Vorgabe. Art Dokument-, Ordner- oder reine Suchmaske. Reiter nach Vorgabe, Felder von Reitern ohne Namen kommen auf Reiter 0, Zeilen je Reiter fortlaufend (Reiter 0 ab Zeile 4). Workflow beim Ablegen wird nicht uebernommen. Weitere Felder danach mit elo_mask_fields.",
+  "Legt eine neue Verschlagwortungsmaske als Kopie einer vorhandenen an (zweistufig, Stufe 3 bauen). Uebernimmt alle, ausgewaehlte oder keine Felder (ohneFelder) mit Feldgruppe, Typ, Rechten und Stichwortbindung, dazu Maskenrechte und Dokumentrechte-Vorgabe. Art Dokument-, Ordner- oder reine Suchmaske. Reiter nach Vorgabe, Felder von Reitern ohne Namen kommen auf Reiter 0, Zeilen je Reiter fortlaufend (Reiter 0 ab Zeile 4). Workflow beim Ablegen wird nicht uebernommen. Weitere Felder danach mit elo_mask_fields.",
   { name: { type: "string", description: "Name der neuen Maske" },
     vorbild: { type: "string", description: "Maske, die kopiert wird (Name oder ID)" },
     art: { type: "string", enum: ["dokument", "ordner", "suche"], description: "Standard: wie das Vorbild" },
@@ -626,6 +630,7 @@ tool("elo_mask_create",
     reiter: { type: "array", items: { type: "string" }, description: "Reiternamen, Position = Reiternummer, z. B. [\"Basis\", \"Termine und Kosten\"]. Standard: wie das Vorbild" },
     felder: { type: "array", items: { type: "string" }, description: "Nur diese Feldgruppen uebernehmen (Reihenfolge wie im Vorbild). Standard: alle" },
     namen: { type: "object", additionalProperties: { type: "string" }, description: "Andere Anzeigenamen als im Vorbild, Feldgruppe -> Name (ohne Klammern)" },
+    ohneFelder: { type: "boolean", description: "Keine Felder des Vorbilds uebernehmen, nur Rechte, Art und Reiter. Felder danach mit elo_mask_fields" },
     token: P_TOKEN },
   ["name", "vorbild"], function (a) {
     bauenPruefen();
@@ -707,4 +712,216 @@ tool("elo_mask_tabs",
   ["maske"], function (a) {
     bauenPruefen();
     return maskenWerkzeug("elo_mask_tabs", a, "Reiter und Zeilen", reiterAnwenden(a));
+  }, 3);
+
+/* ---------- Stichwortlisten ---------- */
+/*
+ * Eine Stichwortliste (IX KeywordList) gehoert zu einer Feldgruppe; ihre ID ist die Feldgruppe (z. B. AW_SIGN_STATUS).
+ * Die Eintraege haben IDs <Liste>\u00b6.AA, <Liste>\u00b6.AB ... und darunter je Ebene zwei Buchstaben mehr
+ * (<Liste>\u00b6.AAAA). Hoechstens 676 Eintraege je Ebene (AA bis ZZ), 15 Ebenen.
+ * Manche Listen liefern einen Wurzeleintrag "Stichwoerter fuer Feldgruppe ...", der wird beim Lesen weggelassen.
+ * Loeschen einer ganzen Liste gibt es hier nicht.
+ */
+var KWC = IXC.KeywordC;
+var KW_WURZEL = /^Stichw\u00f6rter f\u00fcr Feldgruppe/;
+var KW_TRENNER = "\u00b6.";
+var KW_ABC = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+function kwListeHolen(id) {
+  try { return ELO.ix().checkoutKeywordList(S(id), KWC.mbEdit, KWC.MAX_CHILDREN, IXC.LockC.NO); }
+  catch (e) { return null; }
+}
+
+/* Steuerzeichen und Nicht-ASCII in IDs als \uXXXX zeigen (die IDs enthalten ein Trennzeichen nach der Listen-ID). */
+function kwIdLesbar(id) {
+  return S(id).replace(/[^\x20-\x7e]/g, function (c) { return "\\u" + ("000" + c.charCodeAt(0).toString(16)).slice(-4); });
+}
+
+/* Eintraege der Liste ohne Wurzeleintrag. */
+function kwEintraege(kl) {
+  var ch = alsListe(kl.getChildren());
+  if (ch.length === 1 && KW_WURZEL.test(S(ch[0].getText()))) return { wurzel: ch[0], liste: alsListe(ch[0].getChildren()) };
+  return { wurzel: null, liste: ch };
+}
+
+function kwBaum(list, roh) {
+  var out = [];
+  for (var i = 0; list && i < list.length; i++) {
+    var k = list[i], e = { text: S(k.getText()) };
+    if (roh) e.id = kwIdLesbar(k.getId());
+    if (!k.isEnabled()) e.nichtWaehlbar = true;
+    if (k.isRaw()) e.roh = true;
+    var ch = kwBaum(k.getChildren(), roh);
+    if (ch.length) e.eintraege = ch;
+    out.push(e);
+  }
+  return out;
+}
+
+function kwBeschreiben(kl, roh) {
+  var ke = kwEintraege(kl);
+  var res = { id: S(kl.getId()), guid: S(kl.getGuid()), anzeigename: S(kl.getDisplayName()) || undefined, paket: S(kl.getPackageName()) || undefined,
+              eintraege: kwBaum(ke.liste, roh) };
+  if (roh) { res.wurzel = ke.wurzel ? { id: kwIdLesbar(ke.wurzel.getId()), text: S(ke.wurzel.getText()) } : null; res.tstamp = S(kl.getTStamp()); }
+  if (kl.getLockId() >= 0 && S(kl.getUserName())) res.gesperrtVon = S(kl.getUserName());
+  return res;
+}
+
+/* Kurzform fuer Vorschau und Vergleich: "Text", Unterlisten als "Gruppe > Text". */
+function kwFlach(baum, pfad, out) {
+  out = out || [];
+  for (var i = 0; i < baum.length; i++) {
+    var p = (pfad ? pfad + " > " : "") + baum[i].text;
+    out.push(p);
+    if (baum[i].eintraege) kwFlach(baum[i].eintraege, p, out);
+  }
+  return out;
+}
+
+/* Eingabe pruefen: Liste aus Texten oder {text, eintraege}. Liefert [{text, eintraege}]. */
+function kwEingabe(list, tiefe, pfad) {
+  if (!list || !list.length) fail("eintraege fehlt oder ist leer" + (pfad ? " (unter '" + pfad + "')" : "") + ".");
+  if (tiefe > KWC.MAX_TREE_DEPTH) fail("Mehr als " + KWC.MAX_TREE_DEPTH + " Ebenen.");
+  if (list.length > 676) fail("Mehr als 676 Eintraege auf einer Ebene.");
+  var out = [], da = {};
+  for (var i = 0; i < list.length; i++) {
+    var e = list[i], obj = (e && typeof e === "object") ? e : null;
+    var text = trim(obj ? obj.text : e), unter = obj ? obj.eintraege : null;
+    if (!text) fail("Leerer Eintrag an Stelle " + (i + 1) + (pfad ? " unter '" + pfad + "'" : "") + ".");
+    if (text.length > 255) fail("Eintrag '" + text.substring(0, 40) + "...' laenger als 255 Zeichen.");
+    if (da[text]) fail("Eintrag '" + text + "' doppelt" + (pfad ? " unter '" + pfad + "'" : "") + ".");
+    da[text] = true;
+    out.push({ text: text, eintraege: unter && unter.length ? kwEingabe(unter, tiefe + 1, (pfad ? pfad + " > " : "") + text) : null });
+  }
+  return out;
+}
+
+function kwNeuerKnoten(id, text) {
+  var k = new IXC.Keyword();
+  k.setId(id); k.setText(text); k.setEnabled(true); k.setRaw(false); k.setAdd(false);
+  k.setChildren(jarr("Keyword", []));
+  return k;
+}
+
+function kwFreieId(praefix, vorhanden) {
+  var belegt = {};
+  for (var i = 0; i < vorhanden.length; i++) belegt[S(vorhanden[i].getId())] = true;
+  for (var n = 0; n < 676; n++) {
+    var id = praefix + KW_ABC.charAt(Math.floor(n / 26)) + KW_ABC.charAt(n % 26);
+    if (!belegt[id]) return id;
+  }
+  fail("Keine freie ID mehr unter " + kwIdLesbar(praefix) + ".");
+}
+
+/* Kinderliste einer Ebene bauen. alt: vorhandene Keyword-Objekte, soll: Eingabe, modus ergaenzen|ersetzen.
+   Vorhandene Eintraege mit gleichem Text behalten ID und Eigenschaften. bericht sammelt hinzu/weg. */
+function kwEbene(praefix, alt, soll, modus, pfad, bericht) {
+  var nachText = {}, out = [], benutzt = {}, i;
+  for (i = 0; i < alt.length; i++) nachText[S(alt[i].getText())] = alt[i];
+  if (modus === "ergaenzen") for (i = 0; i < alt.length; i++) out.push(alt[i]);
+  for (i = 0; i < soll.length; i++) {
+    var s = soll[i], k = nachText[s.text], p = (pfad ? pfad + " > " : "") + s.text;
+    if (!k) {
+      k = kwNeuerKnoten(kwFreieId(praefix, alt.concat(out)), s.text);
+      bericht.hinzu.push(p);
+      out.push(k);
+    } else if (modus === "ersetzen") out.push(k);
+    benutzt[s.text] = true;
+    if (s.eintraege) {
+      k.setChildren(jarr("Keyword", kwEbene(S(k.getId()), alsListe(k.getChildren()), s.eintraege, modus, p, bericht)));
+    } else if (modus === "ersetzen" && k.getChildren() && k.getChildren().length) {
+      var weg = kwFlach(kwBaum(k.getChildren(), false), p);
+      for (var w = 0; w < weg.length; w++) bericht.weg.push(weg[w]);
+      k.setChildren(jarr("Keyword", []));
+    }
+  }
+  if (modus === "ersetzen") {
+    for (i = 0; i < alt.length; i++) {
+      var t = S(alt[i].getText());
+      if (benutzt[t]) continue;
+      var wp = (pfad ? pfad + " > " : "") + t;
+      bericht.weg.push(wp);
+      var wu = kwFlach(kwBaum(alt[i].getChildren(), false), wp);
+      for (var x = 0; x < wu.length; x++) bericht.weg.push(wu[x]);
+    }
+  }
+  return out;
+}
+
+function kwPlan(a) {
+  var id = trim(a.liste);
+  if (!id) fail("liste ist leer.");
+  if (!/^[A-Za-z0-9_]+$/.test(id)) fail("liste: nur Buchstaben, Ziffern und _ (meist die Feldgruppe).");
+  var modus = trim(a.modus) || "ergaenzen";
+  if (modus !== "ergaenzen" && modus !== "ersetzen") fail("modus: ergaenzen oder ersetzen.");
+  var soll = kwEingabe(a.eintraege, 1, "");
+  var kl = kwListeHolen(id), neu = !kl, warn = [];
+  if (neu) { kl = new IXC.KeywordList(); kl.setId(id); kl.setChildren(jarr("Keyword", [])); }
+  var altName = S(kl.getDisplayName()), altPaket = S(kl.getPackageName()), tstamp = S(kl.getTStamp());
+  var gesperrt = !neu && kl.getLockId() >= 0 && S(kl.getUserName()) ? S(kl.getUserName()) : "";
+  var ke = kwEintraege(kl), bisher = kwBaum(ke.liste, false), bericht = { hinzu: [], weg: [] };
+  var praefix = ke.wurzel ? S(ke.wurzel.getId()) : id + KW_TRENNER;
+  var kinder = kwEbene(praefix, ke.liste, soll, modus, "", bericht);
+  if (ke.wurzel) ke.wurzel.setChildren(jarr("Keyword", kinder)); else kl.setChildren(jarr("Keyword", kinder));
+  var meta = false;
+  if (a.anzeigename !== undefined && trim(a.anzeigename) !== altName) { kl.setDisplayName(trim(a.anzeigename)); meta = true; }
+  if (a.paket !== undefined && trim(a.paket) !== altPaket) { kl.setPackageName(trim(a.paket)); meta = true; }
+  if (!neu && !bericht.hinzu.length && !bericht.weg.length && !meta) fail("Keine Aenderung - die Liste hat schon diese Eintraege.");
+  if (bericht.weg.length) warn.push("Diese Eintraege fallen weg (schon verschlagwortete Werte bleiben in den Dokumenten stehen): " + bericht.weg.join(", "));
+  if (gesperrt) warn.push("Liste ist gesperrt von " + gesperrt + ".");
+  warn.push("Im ELO Client erst nach Neuanmeldung sichtbar.");
+  return { id: id, neu: neu, kl: kl, bisher: bisher, nachher: kwBaum(kwEintraege(kl).liste, false), bericht: bericht, warn: warn,
+           fp: "kw|" + id + "|" + (neu ? "neu" : tstamp + "|" + altName + "|" + altPaket + "|" + JSON.stringify(bisher)) };
+}
+
+function sichereKwListe(id, suffix) {
+  var kl = kwListeHolen(id);
+  if (!kl) return undefined;
+  var f = new java.io.File(sicherungsOrdner(), "stichwortliste-" + id + "-" + zeitstempel() + suffix + ".json");
+  var w = new java.io.OutputStreamWriter(new java.io.FileOutputStream(f), "UTF-8");
+  try { w.write(JSON.stringify(kwBeschreiben(kl, true), null, 1)); } finally { w.close(); }
+  return S(f.getAbsolutePath());
+}
+
+tool("elo_keywords",
+  "Liest eine Stichwortliste (ID = Feldgruppe, z. B. AW_SIGN_STATUS): Anzeigename, Paket, Eintraege als Baum (text, nichtWaehlbar = nur Gruppe, eintraege = Unterliste). Ein Wurzeleintrag 'Stichwoerter fuer Feldgruppe ...' wird weggelassen. roh zeigt zusaetzlich die IDs.",
+  { liste: { type: "string", description: "ID der Stichwortliste, meist die Feldgruppe, z. B. AW_SIGN_STATUS" },
+    roh: { type: "boolean", description: "Auch interne IDs, Wurzeleintrag und Zeitstempel zeigen" } },
+  ["liste"], function (a) {
+    var id = trim(a.liste);
+    if (!id) fail("liste ist leer.");
+    var kl = kwListeHolen(id);
+    if (!kl) return { liste: id, vorhanden: false };
+    var res = kwBeschreiben(kl, !!a.roh);
+    res.vorhanden = true;
+    return res;
+  });
+
+tool("elo_keywords_set",
+  "Legt eine Stichwortliste an oder setzt ihre Eintraege (zweistufig, Stufe 3 bauen, Sicherung vorher). ID = Feldgruppe des Maskenfelds (z. B. AW_SIGN_STATUS). modus ergaenzen (Standard): fehlende Eintraege hinten anhaengen, vorhandene bleiben. modus ersetzen: die Liste besteht danach genau aus den angegebenen Eintraegen in dieser Reihenfolge, vorhandene mit gleichem Text behalten ihre ID. Unterlisten als {text, eintraege}. Eine ganze Liste loeschen geht nicht.",
+  { liste: { type: "string", description: "ID der Stichwortliste, meist die Feldgruppe, z. B. AW_SIGN_STATUS" },
+    eintraege: { type: "array", description: "Eintraege: Texte oder {\"text\": \"Gruppe\", \"eintraege\": [...]}",
+                 items: { anyOf: [{ type: "string" }, { type: "object", properties: { text: { type: "string" }, eintraege: { type: "array" } }, required: ["text"] }] } },
+    modus: { type: "string", enum: ["ergaenzen", "ersetzen"], description: "Standard ergaenzen" },
+    anzeigename: { type: "string", description: "Optional: Anzeigename der Liste" },
+    paket: { type: "string", description: "Optional: Paketname (packageName), z. B. fuer ein ELO-Paket" },
+    token: P_TOKEN },
+  ["liste", "eintraege"], function (a) {
+    bauenPruefen();
+    return zweiSchritte("elo_keywords_set", a, function () {
+      var p = kwPlan(a);
+      return { vorschau: { aktion: p.neu ? "Stichwortliste anlegen" : "Stichwortliste aendern (" + (trim(a.modus) || "ergaenzen") + ")", liste: p.id,
+                           anzeigename: a.anzeigename !== undefined ? trim(a.anzeigename) : undefined, paket: a.paket !== undefined ? trim(a.paket) : undefined,
+                           bisher: p.neu ? "neu" : kwFlach(p.bisher), hinzu: p.bericht.hinzu, weg: p.bericht.weg, nachher: kwFlach(p.nachher) },
+               warnungen: p.warn, fp: p.fp };
+    }, function () {
+      var p = kwPlan(a), sicherung = p.neu ? undefined : sichereKwListe(p.id, "-vorher");
+      ELO.ix().checkinKeywordList(p.kl, IXC.LockC.NO);
+      var ist = kwListeHolen(p.id);
+      if (!ist) fail("Nach dem Speichern nicht lesbar: " + p.id);
+      var soll = kwFlach(p.nachher), istF = kwFlach(kwBaum(kwEintraege(ist).liste, false)), gleich = istF.join("\n") === soll.join("\n");
+      return { liste: p.id, guid: S(ist.getGuid()), angelegt: p.neu || undefined, eintraege: istF,
+               rueckgelesen: gleich ? "ok, wie geplant" : "ABWEICHUNG", soll: gleich ? undefined : soll,
+               sicherungVorher: sicherung, sicherungNachher: sichereKwListe(p.id, "-nachher"), hinweis: "Im ELO Client erst nach Neuanmeldung sichtbar." };
+    });
   }, 3);

@@ -28,6 +28,7 @@ Was uns beim Bau dieses Servers begegnet ist, geprüft gegen einen Indexserver 2
 | Falle | Was stattdessen |
 |---|---|
 | Stichwortlisten liefern einen Wurzeleintrag „Stichwörter für Feldgruppe …" mit. | Beim Prüfen ignorieren. |
+| Einträge einer Stichwortliste brauchen IDs nach festem Schema: `<Liste>¶.AA`, `<Liste>¶.AB` …, darunter je Ebene zwei Buchstaben mehr (`<Liste>¶.AAAA`). `¶` ist U+00B6. Ein neuer `Keyword` ohne `setEnabled(true)` ist nicht wählbar. | `elo_keywords_set` vergibt die IDs und setzt neue Einträge wählbar. Höchstens 676 Einträge je Ebene (AA bis ZZ). |
 | In manchen Archiven sind Datumsfelder als **Textfeld** angelegt. ELO prüft dort nichts. | Echte Datumsfelder (Typ `TYPE_ISO_DATE`) als `JJJJMMTT000000` schreiben. Für Textfelder gilt die Hausregel des Archivs, hier wählbar mit `-TextDatumJJJJMMTT`. |
 | `DocMaskLine.tabIndex` ist die **Nummer** des Reiters, nicht die Reihenfolge. Die Reiternamen stehen im Maskentext, getrennt durch `\|` (`Basis\|Termine\|\|\|`). Ein Reiter ohne Namen erscheint im Client als „Index1" usw. | Reiter erst im Maskentext benennen, dann Felder darauf legen. |
 | Auf Reiter 0 belegen Kurzbezeichnung, Datum und Ablagedatum die Zeilen 1 bis 3. Ein Feld in Zeile 1 bis 3 liegt über diesen Feldern. | Indexfelder auf Reiter 0 ab Zeile 4, auf anderen Reitern ab Zeile 1, fortlaufend. |
