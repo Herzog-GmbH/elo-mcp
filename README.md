@@ -6,7 +6,7 @@
 
 [![Getestet mit ELO 25](https://img.shields.io/badge/getestet%20mit-ELO%2025%20(IX%2025.00)-0067b8)](#voraussetzungen)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![26 Werkzeuge](https://img.shields.io/badge/Werkzeuge-26-2ea44f)](#werkzeuge)
+[![28 Werkzeuge](https://img.shields.io/badge/Werkzeuge-28-2ea44f)](#werkzeuge)
 [![Vorschau und Token](https://img.shields.io/badge/Schreiben-Vorschau%20%2B%20Token-e36209)](#sicherheit)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#voraussetzungen)
@@ -135,6 +135,7 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_my_tasks` | Eigene Aufgaben, auch über Gruppen |
 | `elo_workflow_export` | Vorlage als JSON-Bauplan ([Format](docs/BAUPLAN.md)) |
 | `elo_mask` | Verschlagwortungsmaske: Art, Reiter, alle Felder mit Typ, Reiter, Zeile, Spalten, Länge, Pflicht und Rechten. Dazu eine Layout-Prüfung (Reiter ohne Namen, Felder vor Zeile 4, übereinanderliegende Felder, Felder ohne Rechte, Klammern) |
+| `elo_keywords` | Stichwortliste einer Feldgruppe: Anzeigename, Paket, Einträge als Baum, auf Wunsch mit IDs |
 
 ### Stufe 2: arbeiten (`-Schreiben`)
 
@@ -156,9 +157,10 @@ Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, 
 | `elo_workflow_build` | Vorlage aus Bauplan anlegen oder ersetzen (ID und Name bleiben). Vorschau mit Änderungsliste, Sicherung `.ewf` vorher und nachher |
 | `elo_script_update` | Neue Version eines Dokuments unter `Administration` (ELOas-Regel, IX-Skript, Formularseite …), Vorschau mit Zeilenvergleich, Kodierung bleibt |
 | `elo_script_create` | Neues Dokument unter `Administration`, Maske, Rechte und Typ vom Vorbild |
-| `elo_mask_create` | Neue Verschlagwortungsmaske als Kopie einer vorhandenen: alle oder ausgewählte Felder, andere Anzeigenamen und Reiter, Dokument-, Ordner- oder reine Suchmaske |
+| `elo_mask_create` | Neue Verschlagwortungsmaske als Kopie einer vorhandenen: alle, ausgewählte oder keine Felder (`ohneFelder`), andere Anzeigenamen und Reiter, Dokument-, Ordner- oder reine Suchmaske |
 | `elo_mask_fields` | Felder hinten anhängen (nächste freie Zeile oder direkt unter einem Feld) oder vorhandene ändern: Name, Typ, Länge, Spalte, nur Stichwortliste, Pflicht, Rechte |
 | `elo_mask_tabs` | Reiter benennen, Felder auf einen anderen Reiter oder Platz verschieben, Zeilen lückenlos ordnen |
+| `elo_keywords_set` | Stichwortliste anlegen oder Einträge setzen: ergänzen (Standard) oder ersetzen, Unterlisten, Anzeigename und Paket. Sicherung vorher, zurücklesen danach. Ganze Listen löschen geht nicht |
 
 Die Prüfungen beim Bauen stammen alle aus echten Störungen:
 

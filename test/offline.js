@@ -20,12 +20,13 @@ pruefe("initialize: Hinweise nennen die Stufen", init.result.instructions.indexO
 
 var liste = handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }).result.tools, namen = {};
 for (var i = 0; i < liste.length; i++) namen[liste[i].name] = true;
-var erwartet = 14 + (SCHREIBEN_ERLAUBT ? 6 : 0) + (BAUEN_ERLAUBT ? 6 : 0);
+var erwartet = 15 + (SCHREIBEN_ERLAUBT ? 6 : 0) + (BAUEN_ERLAUBT ? 7 : 0);
 pruefe("tools/list: " + erwartet + " Werkzeuge bei Stufen " + stufenText(), liste.length === erwartet, liste.length);
 pruefe("tools/list: Schreibwerkzeug nur mit -Schreiben", !!namen.elo_set_fields === SCHREIBEN_ERLAUBT);
 pruefe("tools/list: Bauwerkzeug nur mit -Bauen", !!namen.elo_workflow_build === BAUEN_ERLAUBT);
 pruefe("tools/list: Maskenwerkzeuge nur mit -Bauen", !!namen.elo_mask_create === BAUEN_ERLAUBT && !!namen.elo_mask_fields === BAUEN_ERLAUBT && !!namen.elo_mask_tabs === BAUEN_ERLAUBT);
-pruefe("tools/list: Lesewerkzeuge immer", !!(namen.elo_search && namen.elo_workflow_export && namen.elo_mask));
+pruefe("tools/list: Lesewerkzeuge immer", !!(namen.elo_search && namen.elo_workflow_export && namen.elo_mask && namen.elo_keywords));
+pruefe("tools/list: Stichwortlisten setzen nur mit -Bauen", !!namen.elo_keywords_set === BAUEN_ERLAUBT);
 for (var j = 0; j < liste.length; j++) {
   var t = liste[j];
   pruefe("Schema " + t.name, t.inputSchema && t.inputSchema.type === "object" && typeof t.description === "string" && t.description.length > 20);
@@ -194,6 +195,36 @@ function testMaske(zeilen) {
   return mk;
 }
 function keyFolge(lines) { var k = []; for (var i = 0; i < lines.length; i++) k.push(keyOf(lines[i])); return k.join(","); }
+
+/* ---------- Maske ohne Felder, Stichwortlisten (nur im Speicher) ---------- */
+
+var vorbildTest = testMaske(), planOhne = aufbauPlan(vorbildTest, { ohneFelder: true, reiter: ["Basis"] });
+pruefe("Maske anlegen: ohneFelder uebernimmt keine Felder", aufbauAnwenden(alsListe(vorbildTest.getLines()), planOhne, { items: [], text: "" }, []).length === 0);
+m = fange(function () { aufbauAnwenden(alsListe(testMaske().getLines()), aufbauPlan(testMaske(), { felder: ["NAME"] }), { items: [], text: "" }, []); });
+pruefe("Maske anlegen: Auswahl bleibt wie bisher", m === "", m);
+m = fange(function () { aufbauPlan(testMaske(), { ohneFelder: true, felder: ["NAME"] }); });
+pruefe("Maske anlegen: ohneFelder mit felder abgelehnt", /zusammen/.test(m), m);
+
+var kwE = kwEingabe(["draft", { text: "Gruppe", eintraege: ["a", "b"] }], 1, "");
+pruefe("Stichworte: Eingabe mit Unterliste", kwE.length === 2 && kwE[1].eintraege.length === 2);
+m = fange(function () { kwEingabe(["a", "a"], 1, ""); });
+pruefe("Stichworte: doppelter Eintrag abgelehnt", /doppelt/.test(m), m);
+m = fange(function () { kwEingabe(["a", " "], 1, ""); });
+pruefe("Stichworte: leerer Eintrag abgelehnt", /Leerer Eintrag/.test(m), m);
+var kwB = { hinzu: [], weg: [] }, kwN = kwEbene("L\u00b6.", [], kwEingabe(["draft", "sent"], 1, ""), "ergaenzen", "", kwB);
+pruefe("Stichworte: neue IDs AA, AB", S(kwN[0].getId()) === "L\u00b6.AA" && S(kwN[1].getId()) === "L\u00b6.AB" && kwN[0].isEnabled(), kwIdLesbar(kwN[1].getId()));
+var kwAlt = [kwNeuerKnoten("L\u00b6.AA", "draft"), kwNeuerKnoten("L\u00b6.AC", "alt")];
+kwB = { hinzu: [], weg: [] };
+var kwG = kwEbene("L\u00b6.", kwAlt, kwEingabe(["draft", "sent"], 1, ""), "ergaenzen", "", kwB);
+pruefe("Stichworte: ergaenzen haengt an, behaelt Vorhandene", kwG.length === 3 && S(kwG[2].getText()) === "sent" && S(kwG[2].getId()) === "L\u00b6.AB" && kwB.weg.length === 0,
+       kwFlach(kwBaum(kwG, true)).join(","));
+kwB = { hinzu: [], weg: [] };
+var kwR = kwEbene("L\u00b6.", [kwNeuerKnoten("L\u00b6.AA", "draft"), kwNeuerKnoten("L\u00b6.AC", "alt")], kwEingabe(["sent", "draft"], 1, ""), "ersetzen", "", kwB);
+pruefe("Stichworte: ersetzen in neuer Reihenfolge, alt faellt weg", kwFlach(kwBaum(kwR, false)).join(",") === "sent,draft" && S(kwR[1].getId()) === "L\u00b6.AA" && kwB.weg.join() === "alt",
+       kwFlach(kwBaum(kwR, false)).join(",") + " weg=" + kwB.weg.join());
+kwB = { hinzu: [], weg: [] };
+var kwU = kwEbene("L\u00b6.", [], kwEingabe([{ text: "G", eintraege: ["x"] }], 1, ""), "ergaenzen", "", kwB);
+pruefe("Stichworte: Unterliste bekommt ID der Ebene darunter", S(kwU[0].getChildren()[0].getId()) === "L\u00b6.AAAA" && kwB.hinzu.join() === "G,G > x", kwB.hinzu.join());
 
 pruefe("Maske: Rechte RW", rechteBits("RW") === 3);
 pruefe("Maske: Rechte voll", rechteBits("voll") === 63);
