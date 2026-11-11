@@ -1,12 +1,14 @@
 # Änderungen
 
-## Unveröffentlicht
+## 0.8.0 – 2026-11-11
 
-- **Stichwortlisten**, zwei neue Werkzeuge (jetzt 28):
+- **Stichwortlisten** (Pull Request #1), zwei neue Werkzeuge (jetzt 28):
   - `elo_keywords` (Stufe 1): Liste einer Feldgruppe lesen, Einträge als Baum, auf Wunsch mit IDs.
   - `elo_keywords_set` (Stufe 3): Liste anlegen oder Einträge ergänzen bzw. ersetzen, Unterlisten, Anzeigename und Paket. Vorschau und Token, Sicherung als JSON vorher und nachher, zurücklesen und vergleichen. IDs nach ELO-Schema `<Liste>¶.AA` (siehe `docs/FALLEN.md`).
-- Offline-Test um Stichwort- und `ohneFelder`-Prüfungen erweitert (98/119/125 Prüfungen).
+  - Die Listen-ID wird wie die Feldgruppe in Großbuchstaben gesetzt (`aw_sign_status` → `AW_SIGN_STATUS`); `elo_keywords` liest eine Liste mit anderer Schreibweise zur Not wie angegeben.
+  - Als „neu“ gilt eine Liste nur, wenn der Indexserver sie nicht kennt (`ELOIX:5023`). Andere Fehler beim Holen (Verbindung, Rechte, Sitzung) brechen ab, statt eine vorhandene Liste als neu zu planen.
 - `elo_mask_create`: neuer Schalter `ohneFelder` legt eine Maske ohne Felder an (nur Rechte, Art und Reiter des Vorbilds). Vorher kopierte eine leere `felder`-Liste alle Felder, eine Maske ohne Felder ging nicht. Felder danach mit `elo_mask_fields`.
+- Offline-Test um Stichwort- und `ohneFelder`-Prüfungen erweitert (102/123/129 Prüfungen).
 
 ## 0.7.0 – 2026-11-10
 

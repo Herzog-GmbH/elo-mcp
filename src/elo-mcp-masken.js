@@ -727,9 +727,22 @@ var KW_WURZEL = /^Stichw\u00f6rter f\u00fcr Feldgruppe/;
 var KW_TRENNER = "\u00b6.";
 var KW_ABC = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+/* null nur, wenn es die Liste nicht gibt (ELOIX:5023 "nicht vorhanden"). Andere Fehler (Verbindung, Rechte, Sitzung)
+   gehen weiter - sonst wuerde eine vorhandene Liste als "neu" geplant und beim Speichern ersetzt. */
 function kwListeHolen(id) {
   try { return ELO.ix().checkoutKeywordList(S(id), KWC.mbEdit, KWC.MAX_CHILDREN, IXC.LockC.NO); }
-  catch (e) { return null; }
+  catch (e) {
+    if (/ELOIX:5023\]/.test(S(e && e.javaException ? e.javaException : e))) return null;
+    throw e;
+  }
+}
+
+/* Listen-ID = Feldgruppe, wie bei den Masken in Grossbuchstaben (aus aw_sign_status wird AW_SIGN_STATUS). */
+function kwId(v) {
+  var id = trim(v).toUpperCase();
+  if (!id) fail("liste ist leer.");
+  if (!/^[A-Z0-9_]+$/.test(id)) fail("liste: nur Buchstaben, Ziffern und _ (meist die Feldgruppe).");
+  return id;
 }
 
 /* Steuerzeichen und Nicht-ASCII in IDs als \uXXXX zeigen (die IDs enthalten ein Trennzeichen nach der Listen-ID). */
@@ -849,14 +862,13 @@ function kwEbene(praefix, alt, soll, modus, pfad, bericht) {
 }
 
 function kwPlan(a) {
-  var id = trim(a.liste);
-  if (!id) fail("liste ist leer.");
-  if (!/^[A-Za-z0-9_]+$/.test(id)) fail("liste: nur Buchstaben, Ziffern und _ (meist die Feldgruppe).");
+  var id = kwId(a.liste);
   var modus = trim(a.modus) || "ergaenzen";
   if (modus !== "ergaenzen" && modus !== "ersetzen") fail("modus: ergaenzen oder ersetzen.");
   var soll = kwEingabe(a.eintraege, 1, "");
   var kl = kwListeHolen(id), neu = !kl, warn = [];
   if (neu) { kl = new IXC.KeywordList(); kl.setId(id); kl.setChildren(jarr("Keyword", [])); }
+  if (id !== trim(a.liste)) warn.push("Listen-ID in Grossbuchstaben wie die Feldgruppe: " + id + ".");
   var altName = S(kl.getDisplayName()), altPaket = S(kl.getPackageName()), tstamp = S(kl.getTStamp());
   var gesperrt = !neu && kl.getLockId() >= 0 && S(kl.getUserName()) ? S(kl.getUserName()) : "";
   var ke = kwEintraege(kl), bisher = kwBaum(ke.liste, false), bericht = { hinzu: [], weg: [] };
@@ -888,9 +900,11 @@ tool("elo_keywords",
   { liste: { type: "string", description: "ID der Stichwortliste, meist die Feldgruppe, z. B. AW_SIGN_STATUS" },
     roh: { type: "boolean", description: "Auch interne IDs, Wurzeleintrag und Zeitstempel zeigen" } },
   ["liste"], function (a) {
-    var id = trim(a.liste);
-    if (!id) fail("liste ist leer.");
-    var kl = kwListeHolen(id);
+    var roh = trim(a.liste);
+    if (!roh) fail("liste ist leer.");
+    /* Feldgruppen stehen in Grossbuchstaben; eine Liste mit anderer Schreibweise wird zur Not wie angegeben gelesen. */
+    var id = roh.toUpperCase(), kl = kwListeHolen(id);
+    if (!kl && id !== roh) { kl = kwListeHolen(roh); if (kl) id = roh; }
     if (!kl) return { liste: id, vorhanden: false };
     var res = kwBeschreiben(kl, !!a.roh);
     res.vorhanden = true;
@@ -898,7 +912,7 @@ tool("elo_keywords",
   });
 
 tool("elo_keywords_set",
-  "Legt eine Stichwortliste an oder setzt ihre Eintraege (zweistufig, Stufe 3 bauen, Sicherung vorher). ID = Feldgruppe des Maskenfelds (z. B. AW_SIGN_STATUS). modus ergaenzen (Standard): fehlende Eintraege hinten anhaengen, vorhandene bleiben. modus ersetzen: die Liste besteht danach genau aus den angegebenen Eintraegen in dieser Reihenfolge, vorhandene mit gleichem Text behalten ihre ID. Unterlisten als {text, eintraege}. Eine ganze Liste loeschen geht nicht.",
+  "Legt eine Stichwortliste an oder setzt ihre Eintraege (zweistufig, Stufe 3 bauen, Sicherung vorher). ID = Feldgruppe des Maskenfelds (z. B. AW_SIGN_STATUS), wird in Grossbuchstaben gesetzt. modus ergaenzen (Standard): fehlende Eintraege hinten anhaengen, vorhandene bleiben. modus ersetzen: die Liste besteht danach genau aus den angegebenen Eintraegen in dieser Reihenfolge, vorhandene mit gleichem Text behalten ihre ID. Unterlisten als {text, eintraege}. Eine ganze Liste loeschen geht nicht.",
   { liste: { type: "string", description: "ID der Stichwortliste, meist die Feldgruppe, z. B. AW_SIGN_STATUS" },
     eintraege: { type: "array", description: "Eintraege: Texte oder {\"text\": \"Gruppe\", \"eintraege\": [...]}",
                  items: { anyOf: [{ type: "string" }, { type: "object", properties: { text: { type: "string" }, eintraege: { type: "array" } }, required: ["text"] }] } },

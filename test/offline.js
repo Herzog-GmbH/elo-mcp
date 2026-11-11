@@ -225,6 +225,18 @@ pruefe("Stichworte: ersetzen in neuer Reihenfolge, alt faellt weg", kwFlach(kwBa
 kwB = { hinzu: [], weg: [] };
 var kwU = kwEbene("L\u00b6.", [], kwEingabe([{ text: "G", eintraege: ["x"] }], 1, ""), "ergaenzen", "", kwB);
 pruefe("Stichworte: Unterliste bekommt ID der Ebene darunter", S(kwU[0].getChildren()[0].getId()) === "L\u00b6.AAAA" && kwB.hinzu.join() === "G,G > x", kwB.hinzu.join());
+pruefe("Stichworte: Listen-ID in Grossbuchstaben", kwId(" aw_sign_status ") === "AW_SIGN_STATUS", kwId(" aw_sign_status "));
+m = fange(function () { kwId("AW-SIGN"); });
+pruefe("Stichworte: Listen-ID mit Sonderzeichen abgelehnt", /nur Buchstaben/.test(m), m);
+var ixEcht = ELO.ix, kwFehler = "";
+ELO.ix = function () { return { checkoutKeywordList: function () { throw new Error(kwFehler); } }; };
+try {
+  kwFehler = "[ELOIX:5023]Das Objekt mit der ID kwList.id=X ist nicht vorhanden.";
+  pruefe("Stichworte: fehlende Liste (ELOIX:5023) gilt als neu", kwListeHolen("X") === null);
+  kwFehler = "[ELOIX:2001]Sitzung abgelaufen";
+  m = fange(function () { kwListeHolen("X"); });
+  pruefe("Stichworte: anderer Fehler beim Holen wird nicht als neue Liste behandelt", /ELOIX:2001/.test(m), m);
+} finally { ELO.ix = ixEcht; }
 
 pruefe("Maske: Rechte RW", rechteBits("RW") === 3);
 pruefe("Maske: Rechte voll", rechteBits("voll") === 63);
