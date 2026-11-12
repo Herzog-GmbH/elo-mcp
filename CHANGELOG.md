@@ -1,5 +1,18 @@
 # Änderungen
 
+## 0.10.0 – 2026-11-12
+
+- **Laufende Vorgänge reparieren und Vorlagen gezielt ändern**, sechs neue Werkzeuge (jetzt 40). Anlass: Änderungen an Onboarding und Offboarding, die bisher nur über Einzelskripte gingen:
+  - `elo_workflows_of_template` (Stufe 1): laufende Vorgänge einer Vorlage, nur aktive, Suche über die Vorlagen-ID (höchstens 100), auf Wunsch mit den aktiven Knoten.
+  - `elo_workflow_node_set` (Stufe 3): Name, Label, Formular, Bedingung, Flags, Bearbeiter und Skripteigenschaften (ganz oder einzelne Schlüssel) an einer Vorlage oder an bis zu 20 laufenden Vorgängen in einem Aufruf.
+  - `elo_workflow_activate` (Stufe 3): nie betretenen Personenknoten aktivieren, auf Wunsch den hängenden Sammler davor durchschalten.
+  - `elo_workflow_edges` (Stufe 3): Kanten an Vorlage oder Vorgang ergänzen und entfernen; erledigte Kanten bleiben, kein Knoten bleibt ohne Nachfolger.
+  - `elo_form_pages` (Stufe 3): mehrere Formularseiten in einem Zug, Formularordner nach Vorbild samt dessen Referenzen; Referenzen werden nie geändert.
+  - `elo_rename_in_folder` (Stufe 2): ein Wort in Kurzbezeichnung und Feldern einer Akte samt Unterobjekten ersetzen, dazu in Vorgangsnamen; nur ganze Wörter, auch mit Umlauten.
+- `elo_workflow_build`: Bauplan auch aus einer lokalen Datei (`bauplanDatei`); der Inhalt geht in den Fingerabdruck, eine zwischen Vorschau und Ausführung geänderte Datei wird abgelehnt.
+- Alle Werkzeuge an Workflows: gesperrte Vorgänge abgelehnt, nach Fehlern nur mit `mbOnlyLock` entsperrt, Sicherung als JSON (Vorlagen zusätzlich `.ewf`), danach zurücklesen.
+- Offline-Test um Wortersetzung, Skripteigenschaften, Kanten, Knotenziele und Bauplan-Datei erweitert (157/182/188 Prüfungen).
+
 ## 0.9.0 – 2026-11-12
 
 - **Benutzerkonten**, zwei neue Werkzeuge (jetzt 30):

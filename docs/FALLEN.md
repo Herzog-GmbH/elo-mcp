@@ -59,7 +59,13 @@ Was uns beim Bau dieses Servers begegnet ist, geprüft gegen einen Indexserver 2
 | Sammelknoten mit Zähler 0 leiten schon beim ersten fertigen Vorgänger weiter. Mit -1 warten sie auch auf Zweige, die ein IF übersprungen hat, und bleiben stehen. | Festen Zähler = Zahl der Zweige. Statt Entscheidung direkt am Sammler einen leeren Verteiler „Übersprungen" dazwischen. |
 | Ein Personenknoten ohne ausgehende Kante lässt den Vorgang hängen. | Vor dem Speichern prüfen, dass jeder Knoten außer Ende einen Nachfolger hat. |
 | Weiterleiten über die API (`forwardWorkflowNode`) übergeht die Prüfungen eines Formulars am Knoten. | Bei Knoten mit Formular nur bewusst über die API weiterleiten. |
-| Laufende Workflows haben ihre eigene Kopie der Vorlage. | Änderungen an der Vorlage wirken nur auf neue Vorgänge. |
+| Laufende Workflows haben ihre eigene Kopie der Vorlage. | Änderungen an der Vorlage wirken nur auf neue Vorgänge. Laufende gezielt mit `elo_workflow_node_set` bzw. `elo_workflow_edges` und `art: "aktiv"` nachziehen. |
+| Ein Sammelknoten lässt sich nicht weiterleiten (`ELOIX:2000` „is not a person node"). Hängt er, weil ein Zweig nie betreten wurde, kommt der Vorgang nicht weiter. | Über `checkinWorkFlow` den Sammler verlassen (Austritt, `isNext` 0, Kante erledigt) und den Nachfolger betreten (Eintritt, `isNext` 1): `elo_workflow_activate` mit `sammler`. Der Knoten erscheint dann als Aufgabe und läuft normal weiter; Skripte am Knoten laufen dabei nicht. |
+| Ein Warte- bzw. Verteilerknoten mit `wait`/`passOn` stößt nur den ersten Nachfolger an. | Die übrigen Zweige mit `elo_workflow_activate` nachziehen. |
+| Nach einem Fehler mit `checkinWorkFlow(…, mbAll, …)` entsperrt, landen halb geänderte Knoten im Archiv. | Zum Entsperren nur `WFDiagramC.mbOnlyLock`. |
+| ELOwf beschriftet den Weiterleiten-Knopf mit dem Label des **Nachfolgers**, ohne Label mit dessen Knotennamen. | Das Label am Nachfolger setzen, nicht am Knoten, an dem der Knopf erscheint. |
+| Ohne Flag `FLAG_ONE_SUCCESSOR` (1) zeigt ELOwf bei mehreren Nachfolgern Checkboxen und einen allgemeinen Knopf statt je einem beschrifteten Knopf. | Flag 1 an Personenknoten mit mehreren Nachfolgern setzen. |
+| Eine Formularseite, die als Referenz in einem Formularordner liegt (z. B. ein gemeinsamer Rahmen), gehört einem anderen Formular. | Referenzen nie über das eine Formular ändern. Beim Löschen eines Formularordners erst die Referenz lösen (`deleteSord(<Ordner>, <Referenz>)`), sonst trifft es das Original. |
 
 ## Indexserver-Skripte
 

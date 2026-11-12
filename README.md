@@ -6,7 +6,7 @@
 
 [![Getestet mit ELO 25](https://img.shields.io/badge/getestet%20mit-ELO%2025%20(IX%2025.00)-0067b8)](#voraussetzungen)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![34 Werkzeuge](https://img.shields.io/badge/Werkzeuge-34-2ea44f)](#werkzeuge)
+[![40 Werkzeuge](https://img.shields.io/badge/Werkzeuge-40-2ea44f)](#werkzeuge)
 [![Vorschau und Token](https://img.shields.io/badge/Schreiben-Vorschau%20%2B%20Token-e36209)](#sicherheit)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#voraussetzungen)
@@ -139,6 +139,7 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_user` | Benutzerkonto mit Windows-Anmeldename (für SSO), Mail, letzter Anmeldung und Gruppen; nennt andere Konten mit demselben Windows-Namen. Mit `doppelte` alle doppelten Windows-Namen und Mails im Archiv |
 | `elo_acl` | Rechte (ACL) eines Eintrags. Mit `benutzer` die wirksamen Rechte jeder Person mit Herkunft (direkt, über Gruppe, geerbt, Eigentümer); mit `unterordner` dasselbe für die Ordner eine Ebene darunter und nur die Stellen, an denen sich zwei Personen unterscheiden, z. B. für eine Vertretung |
 | `elo_substitutions` | Vertretungen einer Person: wer sie vertritt, wen sie vertritt, Zeitraum, Status, ob Aufgaben und Postbox sichtbar sind |
+| `elo_workflows_of_template` | Laufende Vorgänge einer Vorlage (nur aktive, Suche über die Vorlagen-ID, höchstens 100), auf Wunsch für die ersten zehn mit ihren aktiven Knoten |
 
 ### Stufe 2: arbeiten (`-Schreiben`)
 
@@ -150,6 +151,7 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_set_fields` | Indexfelder und Kurzbezeichnung setzen, Vorschau bisher → neu |
 | `elo_start_workflow` | Workflow aus Vorlage starten, warnt, wenn dieselbe Vorlage schon läuft |
 | `elo_forward_task` | Aufgabe weiterleiten. Bei mehreren Nachfolgern Pflichtangabe. Knoten mit Formular nur mit `trotzFormular`, weil Formularprüfungen über die API nicht laufen |
+| `elo_rename_in_folder` | Ein Wort, z. B. einen falsch geschriebenen Namen, in der Kurzbezeichnung und in benannten Feldern eines Objekts und seiner Unterobjekte ersetzen (Standard zwei Ebenen, höchstens drei und 300 Objekte), dazu im Namen laufender Vorgänge. Nur ganze Wörter (auch mit Umlauten), Referenzen und Dokumentinhalte bleiben unberührt |
 
 Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, Datum (31.02. wird abgelehnt), Stichwortliste bei „nur Liste". Datumsfelder schreibt der Server im ELO-Format `JJJJMMTT000000`.
 
@@ -157,7 +159,7 @@ Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, 
 
 | Werkzeug | Zweck |
 |---|---|
-| `elo_workflow_build` | Vorlage aus Bauplan anlegen oder ersetzen (ID und Name bleiben). Vorschau mit Änderungsliste, Sicherung `.ewf` vorher und nachher |
+| `elo_workflow_build` | Vorlage aus Bauplan (`bauplan` oder lokale Datei `bauplanDatei`) anlegen oder ersetzen (ID und Name bleiben). Vorschau mit Änderungsliste, Sicherung `.ewf` vorher und nachher |
 | `elo_script_update` | Neue Version eines Dokuments unter `Administration` (ELOas-Regel, IX-Skript, Formularseite …), Vorschau mit Zeilenvergleich, Kodierung bleibt |
 | `elo_script_create` | Neues Dokument unter `Administration`, Maske, Rechte und Typ vom Vorbild |
 | `elo_mask_create` | Neue Verschlagwortungsmaske als Kopie einer vorhandenen: alle, ausgewählte oder keine Felder (`ohneFelder`), andere Anzeigenamen und Reiter, Dokument-, Ordner- oder reine Suchmaske |
@@ -167,6 +169,10 @@ Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, 
 | `elo_user_set_login` | Windows-Anmeldename und/oder Mail an einem Benutzerkonto setzen oder leeren, z. B. wenn zwei Konten denselben Windows-Namen tragen und die SSO-Anmeldung deshalb scheitert. Lehnt einen Windows-Namen ab, der schon an einem anderen Konto steht. Rechte, Gruppen, Name und Passwort bleiben. Sicherung vorher und nachher, zurücklesen |
 | `elo_acl_set` | Rechte **eines** Eintrags ändern: Person oder Gruppe mit Rechten (R W D E L P, `voll`) setzen, `wie` eine andere Person, oder `entfernen`. Andere Einträge, Unterordner und Dokumente bleiben. Warnt, wenn das eigene Konto danach kein P mehr hat. Sicherung vorher und nachher, zurücklesen |
 | `elo_substitution_set` | Vertretung mit Zeitraum anlegen (Aufgaben ja, Postbox auf Wunsch) oder eine bestehende beenden. ELO rechnet tageweise: Beenden kürzt auf gestern, nichts wird gelöscht. Objektrechte gibt eine Vertretung nicht, dafür `elo_acl` |
+| `elo_workflow_node_set` | Knoten einer Vorlage **oder laufender Vorgänge** ändern: Name, Label (Knopftext), Formular, Bedingung, Flags, Bearbeiter, Skripteigenschaften ganz (`props`) oder einzelne Schlüssel (`propsErgaenzen`, z. B. `{"forwardToAll": true}`). Mehrere Knoten und bis zu 20 Vorgänge in einem Aufruf. Vorschau je Knoten bisher → neu mit Hinweis, ob er aktiv oder schon verlassen ist; Sicherung vorher, zurücklesen |
+| `elo_workflow_activate` | In einem laufenden Vorgang einen nie betretenen Personenknoten aktivieren, auf Wunsch vorher den hängenden Sammler durchschalten (verlassen, Kante erledigt). Für Vorgänge, in denen ein Knoten nur den ersten Nachfolger angestoßen hat. Skripte am Knoten laufen dabei nicht |
+| `elo_workflow_edges` | Kanten an einer Vorlage oder einem laufenden Vorgang ergänzen oder entfernen. Vorhandene Kanten behalten ihren Erledigt-Stand, erledigte Kanten bleiben, kein Knoten darf ohne Nachfolger zurückbleiben |
+| `elo_form_pages` | Mehrere Seiten eines ELOwf-Formulars in einem Zug aus einem lokalen Verzeichnis (Dateiname = Seite): neue Version oder neu angelegt, unveränderte übersprungen, Zeilenvergleich in der Vorschau. Fehlt das Formular, legt `neuNachVorbild` es wie ein vorhandenes an, samt dessen Referenzen (z. B. gemeinsamer Rahmen). Referenzen werden nie geändert |
 
 Die Prüfungen beim Bauen stammen alle aus echten Störungen:
 
@@ -174,6 +180,7 @@ Die Prüfungen beim Bauen stammen alle aus echten Störungen:
 - **ELOas-Regeln:** XML wohlgeformt, jeder Skriptteil wird mit Rhino kompiliert.
 - **IX-Skripte:** kompiliert, jeder `//@include` ist auflösbar, `@include` steht nur in den Kopfzeilen, nur ASCII. Ein nicht auflösbarer Include stoppt sonst den **ganzen** Skript-Motor des Indexservers.
 - **Masken:** Felder nur auf Reitern mit Namen (sonst „Index1" im Client), auf Reiter 0 ab Zeile 4 (darüber liegen Kurzbezeichnung und Datum), keine übereinanderliegenden Felder, **Rechte an jeder Zeile** (sonst sehen nur Administratoren den Wert), Eingabefeld nach der Beschriftung, keine Klammern im Anzeigenamen, Zeilen-IDs 50 bis 59 frei. Die Reihenfolge der Zeilen bleibt immer, neue Felder kommen hinten dran. Vorher und nachher eine Sicherung als JSON, nach dem Speichern zurücklesen und vergleichen.
+- **Laufende Vorgänge:** gesperrte Vorgänge werden abgelehnt, und nach einem Fehler wird nur die Sperre gelöst (nie halb geänderte Knoten eingecheckt). Vor jeder Änderung eine Sicherung als JSON (bei Vorlagen zusätzlich `.ewf`), danach zurücklesen. Aktivieren nur für nie betretene Personenknoten, Durchschalten nur für einen aktiven Sammler direkt davor.
 
 Neu laden (ELOas, IX-Skripte), „Aktualisieren" im Formulardesigner und die Neuanmeldung nach einer Maskenänderung bleiben Handarbeit. Das sagt der Server nach jeder Änderung dazu.
 
@@ -215,6 +222,7 @@ MCP-Clients starten jeden Server einmal je Sitzung. Eine JVM je Sitzung kostet r
 | `src/elo-mcp-masken.js` | Masken lesen (Stufe 1) und bauen (Stufe 3), Layout-Regeln |
 | `src/elo-mcp-benutzer.js` | Benutzerkonten: Windows-Name und Mail lesen, doppelte finden (Stufe 1), setzen (Stufe 3) |
 | `src/elo-mcp-rechte.js` | Objektrechte und Vertretungen lesen und vergleichen (Stufe 1), setzen (Stufe 3) |
+| `src/elo-mcp-vorgaenge.js` | Laufende Vorgänge einer Vorlage (Stufe 1), Knoten, Kanten und Aktivieren an Vorlagen und Vorgängen, Formularseiten (Stufe 3), Wort in einer Akte ersetzen (Stufe 2) |
 | `src/elo-mcp-start.js` | Hauptschleife |
 | `test/offline.ps1` | Prüfungen ohne ELO (Protokoll, Stufen, Bauplan, Skripte, Masken) |
 | `test/test-mcp.py` | Aufrufe gegen ein echtes ELO, z. B. `python -I test\test-mcp.py test\beispiel-lesen.json -- -IxUrl <url>` |

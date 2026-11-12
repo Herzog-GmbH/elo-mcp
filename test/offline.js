@@ -1,7 +1,7 @@
 /*
  * offline.js - Pruefungen ohne ELO-Verbindung: Protokoll, Stufen, Vorschau und Token,
  * Datumspruefung, Bauplan-, Skript- und Maskenpruefungen. Wird von test\offline.ps1 nach den Quellen geladen
- * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js - ohne elo-mcp-start.js).
+ * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js, elo-mcp-vorgaenge.js - ohne elo-mcp-start.js).
  */
 
 var OUT = REAL_OUT, fehlerZahl = 0, okZahl = 0;
@@ -20,7 +20,7 @@ pruefe("initialize: Hinweise nennen die Stufen", init.result.instructions.indexO
 
 var liste = handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }).result.tools, namen = {};
 for (var i = 0; i < liste.length; i++) namen[liste[i].name] = true;
-var erwartet = 18 + (SCHREIBEN_ERLAUBT ? 6 : 0) + (BAUEN_ERLAUBT ? 10 : 0);
+var erwartet = 19 + (SCHREIBEN_ERLAUBT ? 7 : 0) + (BAUEN_ERLAUBT ? 14 : 0);
 pruefe("tools/list: " + erwartet + " Werkzeuge bei Stufen " + stufenText(), liste.length === erwartet, liste.length);
 pruefe("tools/list: Schreibwerkzeug nur mit -Schreiben", !!namen.elo_set_fields === SCHREIBEN_ERLAUBT);
 pruefe("tools/list: Bauwerkzeug nur mit -Bauen", !!namen.elo_workflow_build === BAUEN_ERLAUBT);
@@ -360,6 +360,69 @@ if (!BAUEN_ERLAUBT) {
   pruefe("gesperrtes Rechtewerkzeug wird abgelehnt", ra.isError && /nicht freigeschaltet/.test(ra.content[0].text), ra.content[0].text);
   var rv = callTool("elo_substitution_set", { benutzer: "1", vertreter: "2", bis: "2099-01-01" });
   pruefe("gesperrtes Vertretungswerkzeug wird abgelehnt", rv.isError && /nicht freigeschaltet/.test(rv.content[0].text), rv.content[0].text);
+}
+
+/* ---------- Vorgaenge, Kanten, Formularseiten, Text ersetzen ---------- */
+
+pruefe("tools/list: Vorgaenge einer Vorlage immer", !!namen.elo_workflows_of_template);
+pruefe("tools/list: Knoten/Kanten/Aktivieren/Formularseiten nur mit -Bauen",
+       !!namen.elo_workflow_node_set === BAUEN_ERLAUBT && !!namen.elo_workflow_activate === BAUEN_ERLAUBT &&
+       !!namen.elo_workflow_edges === BAUEN_ERLAUBT && !!namen.elo_form_pages === BAUEN_ERLAUBT);
+pruefe("tools/list: Text ersetzen nur mit -Schreiben", !!namen.elo_rename_in_folder === SCHREIBEN_ERLAUBT);
+
+var we1 = wortErsetzen("Personalakte Mustermann, Mxa", "Mxa", "Max");
+pruefe("Wort ersetzen: ganzes Wort", we1.text === "Personalakte Mustermann, Max" && we1.anzahl === 1, JSON.stringify(we1));
+var we2 = wortErsetzen("Mxas Mxa-Akte xMxa", "Mxa", "Max");
+pruefe("Wort ersetzen: Teilwort bleibt, Bindestrich trennt", we2.text === "Mxas Max-Akte xMxa" && we2.anzahl === 1, JSON.stringify(we2));
+var we3 = wortErsetzen("Müller Müllerin ÜMüller", "Müller", "Mueller");
+pruefe("Wort ersetzen: Umlaute zaehlen als Buchstaben", we3.text === "Mueller Müllerin ÜMüller" && we3.anzahl === 1, JSON.stringify(we3));
+var we4 = wortErsetzen("Ab ab AB", "ab", "x");
+pruefe("Wort ersetzen: Gross-/Kleinschreibung zaehlt", we4.text === "Ab x AB", JSON.stringify(we4));
+
+var pw = [];
+pruefe("props ergaenzen: Schluessel dazu", JSON.parse(propsNeu('{"a":1}', { propsErgaenzen: { forwardToAll: true } }, pw)).forwardToAll === true);
+pruefe("props ergaenzen: null entfernt", JSON.parse(propsNeu('{"a":1,"b":2}', { propsErgaenzen: { b: null } }, pw)).b === undefined);
+pruefe("props ergaenzen: ohne Aenderung bleibt der Text", propsNeu('{"a":1}', { propsErgaenzen: { a: 1 } }, pw) === '{"a":1}');
+pruefe("props ergaenzen: leer wird Objekt", JSON.parse(propsNeu("", { propsErgaenzen: { x: "y" } }, pw)).x === "y");
+pruefe("props ergaenzen: Nicht-JSON abgelehnt", /kein JSON/.test(fange(function () { propsNeu("kein json", { propsErgaenzen: { x: 1 } }, []); })));
+pruefe("props ersetzen: Objekt wird JSON", JSON.parse(propsNeu("", { props: { z: 2 } }, pw)).z === 2);
+var pw2 = []; propsNeu("", { props: "{kaputt" }, pw2);
+pruefe("props ersetzen: kaputtes JSON nur Warnung", pw2.length === 1, JSON.stringify(pw2));
+pruefe("props und propsErgaenzen zusammen abgelehnt", /nicht zusammen/.test(fange(function () { propsNeu("", { props: {}, propsErgaenzen: {} }, []); })));
+pruefe("aenderung: unbekanntes Feld abgelehnt", /unbekanntes Feld/.test(fange(function () { aenderungPruefen({ lable: "x" }); })));
+pruefe("aenderung: leer abgelehnt", /leer/.test(fange(function () { aenderungPruefen({}); })));
+pruefe("aenderung: flags nur ganze Zahl", /flags/.test(fange(function () { aenderungPruefen({ flags: "1" }); })));
+
+pruefe("Kante lesen: ja", kanteLesen([3, 4, "ja"], true).typ === -1);
+pruefe("Kante lesen: normal", kanteLesen(["3", "4"], true).typ === -3 && kanteLesen(["3", "4"], true).von === 3);
+pruefe("Kante lesen: falscher Typ abgelehnt", /ja/.test(fange(function () { kanteLesen([3, 4, "vielleicht"], true); })));
+pruefe("Kante lesen: Typ beim Entfernen abgelehnt", /\[von, nach\]/.test(fange(function () { kanteLesen([3, 4, "ja"], false); })));
+pruefe("Knoten-IDs: Text abgelehnt", /ungueltig/.test(fange(function () { knotenIds(["3a"]); })));
+pruefe("Vorgangs-IDs: doppelte zusammengefasst", idListe(["1", "1", "2"], 5, "Vorgaenge").length === 2);
+pruefe("Vorgangs-IDs: Grenze", /Hoechstens/.test(fange(function () { idListe(["1", "2", "3"], 2, "Vorgaenge"); })));
+pruefe("Workflow-Art geprueft", /vorlage/.test(fange(function () { wfTyp("beendet"); })));
+
+// Knotenziel an einem echten WFNode (ohne ELO-Verbindung)
+var tn = new IXC.WFNode(); tn.setId(7); tn.setType(IXC.WFNodeC.TYPE_PERSONNODE); tn.setName("HR"); tn.setLabel(""); tn.setUserName("Alt"); tn.setUserId(5);
+tn.setProperties('{"a":1}'); tn.setFlags(0);
+var tz = knotenZiel(tn, { label: "Erledigt", flags: 1, propsErgaenzen: { forwardToAll: true } }, null, []);
+pruefe("Knotenziel: nur Geaendertes", tz.label.neu === "Erledigt" && tz.flags.neu === 1 && !!tz.props && !tz.name, JSON.stringify(tz));
+knotenSetzen(tn, tz);
+pruefe("Knotenziel gesetzt", S(tn.getLabel()) === "Erledigt" && tn.getFlags() === 1 && JSON.parse(S(tn.getProperties())).forwardToAll === true);
+pruefe("Knotenziel: nach dem Setzen nichts mehr zu tun", JSON.stringify(knotenZiel(tn, { label: "Erledigt", flags: 1 }, null, [])) === "{}");
+var tv = new IXC.WFNode(); tv.setId(8); tv.setType(IXC.WFNodeC.TYPE_SPLITNODE); tv.setName("Verteiler");
+pruefe("Knotenziel: Bearbeiter nur an Personenknoten", /kein Personenknoten/.test(fange(function () { knotenZiel(tv, {}, { name: "X", id: 1 }, []); })));
+
+// Bauplan aus Datei
+var bpf = java.io.File.createTempFile("elo-mcp-test-", ".json"); bpf.deleteOnExit();
+var bpw = new java.io.OutputStreamWriter(new java.io.FileOutputStream(bpf), "UTF-8"); bpw.write("﻿{\"name\":\"X\",\"nodes\":[],\"assocs\":[]}"); bpw.close();
+pruefe("Bauplan aus Datei (mit BOM)", bauplanLesen({ bauplanDatei: S(bpf.getAbsolutePath()) }).name === "X");
+pruefe("Bauplan: beides abgelehnt", /nicht beides/.test(fange(function () { bauplanLesen({ bauplan: {}, bauplanDatei: S(bpf.getAbsolutePath()) }); })));
+pruefe("Bauplan: keiner abgelehnt", /fehlt/.test(fange(function () { bauplanLesen({}); })));
+
+if (!BAUEN_ERLAUBT) {
+  var rn = callTool("elo_workflow_node_set", { ids: ["1"], art: "aktiv", knoten: [1], aenderung: { label: "x" } });
+  pruefe("gesperrtes Knotenwerkzeug wird abgelehnt", rn.isError && /nicht freigeschaltet/.test(rn.content[0].text), rn.content[0].text);
 }
 
 OUT.println("");

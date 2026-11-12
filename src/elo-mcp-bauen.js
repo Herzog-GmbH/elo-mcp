@@ -300,15 +300,28 @@ tool("elo_workflow_export",
     return res;
   });
 
+/* Bauplan aus dem Argument oder aus einer lokalen Datei. Der Inhalt geht in den Fingerabdruck:
+   aendert sich die Datei zwischen Vorschau und Ausfuehrung, wird abgelehnt. */
+function bauplanLesen(a) {
+  if (a.bauplan !== undefined && a.bauplanDatei) fail("Entweder bauplan oder bauplanDatei angeben, nicht beides.");
+  if (a.bauplanDatei) {
+    var d = lokaleDatei(a.bauplanDatei), t = S(new java.lang.String(java.nio.file.Files.readAllBytes(d.file.toPath()), "UTF-8")).replace(/^\ufeff/, "");
+    try { return JSON.parse(t); } catch (e) { fail("bauplanDatei ist kein gueltiges JSON: " + S(e.message || e)); }
+  }
+  if (a.bauplan === undefined || a.bauplan === null) fail("bauplan oder bauplanDatei fehlt.");
+  return JSON.parse(JSON.stringify(a.bauplan));
+}
+
 tool("elo_workflow_build",
   "Legt eine Workflow-Vorlage aus einem Bauplan an oder ersetzt eine vorhandene (vorlageId; ID und Name bleiben, Sicherung vorher). Zweistufig. Prueft Start/Ende, Erreichbarkeit, Kanten, Personen, Formulare, Sammler-Zaehler. Laufende Vorgaenge behalten ihre alte Kopie der Vorlage. Nur mit -Bauen.",
   { bauplan: { type: "object", description: "Bauplan wie aus elo_workflow_export" },
+    bauplanDatei: { type: "string", description: "Alternativ: lokale JSON-Datei mit dem Bauplan (UTF-8)" },
     vorlageId: { type: "string", description: "Zum Ersetzen einer vorhandenen Vorlage; leer = neu anlegen" },
     token: P_TOKEN },
-  ["bauplan"], function (a) {
+  [], function (a) {
     bauenPruefen();
     return zweiSchritte("elo_workflow_build", a, function () {
-      var spec = JSON.parse(JSON.stringify(a.bauplan)), p = pruefePlan(spec), warn = p.warn.slice(), fp, diff = null, aktuell = null;
+      var spec = bauplanLesen(a), p = pruefePlan(spec), warn = p.warn.slice(), fp, diff = null, aktuell = null;
       if (p.fehler.length) fail("Bauplan fehlerhaft:\n- " + p.fehler.join("\n- ") + (warn.length ? "\nHinweise:\n- " + warn.join("\n- ") : ""));
       var gleich = vorlageNachName(S(spec.name));
       if (a.vorlageId) {
@@ -333,7 +346,7 @@ tool("elo_workflow_build",
       if (forms.length) warn.push("Neue oder geaenderte Formulare erst nach 'Aktualisieren' im Formulardesigner sichtbar.");
       return { vorschau: { aktion: a.vorlageId ? "Vorlage ersetzen" : "Vorlage anlegen", vorlage: S(spec.name) + (a.vorlageId ? " [" + a.vorlageId + "]" : ""),
                            knoten: knoten, kanten: spec.assocs.length, aenderungen: diff },
-               warnungen: warn, fp: fp, spec: spec, updateId: a.vorlageId ? trim(a.vorlageId) : null };
+               warnungen: warn, fp: fp + "|" + JSON.stringify(spec), spec: spec, updateId: a.vorlageId ? trim(a.vorlageId) : null };
     }, function (p) {
       var sich = p.updateId ? sichereVorlage(p.updateId, "-vorher") : null;
       var id = vorlageSchreiben(p.spec, p.updateId);
