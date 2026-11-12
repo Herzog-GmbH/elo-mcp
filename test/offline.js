@@ -1,7 +1,7 @@
 /*
  * offline.js - Pruefungen ohne ELO-Verbindung: Protokoll, Stufen, Vorschau und Token,
  * Datumspruefung, Bauplan-, Skript- und Maskenpruefungen. Wird von test\offline.ps1 nach den Quellen geladen
- * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js - ohne elo-mcp-start.js).
+ * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js - ohne elo-mcp-start.js).
  */
 
 var OUT = REAL_OUT, fehlerZahl = 0, okZahl = 0;
@@ -20,7 +20,7 @@ pruefe("initialize: Hinweise nennen die Stufen", init.result.instructions.indexO
 
 var liste = handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }).result.tools, namen = {};
 for (var i = 0; i < liste.length; i++) namen[liste[i].name] = true;
-var erwartet = 15 + (SCHREIBEN_ERLAUBT ? 6 : 0) + (BAUEN_ERLAUBT ? 7 : 0);
+var erwartet = 18 + (SCHREIBEN_ERLAUBT ? 6 : 0) + (BAUEN_ERLAUBT ? 10 : 0);
 pruefe("tools/list: " + erwartet + " Werkzeuge bei Stufen " + stufenText(), liste.length === erwartet, liste.length);
 pruefe("tools/list: Schreibwerkzeug nur mit -Schreiben", !!namen.elo_set_fields === SCHREIBEN_ERLAUBT);
 pruefe("tools/list: Bauwerkzeug nur mit -Bauen", !!namen.elo_workflow_build === BAUEN_ERLAUBT);
@@ -306,6 +306,61 @@ var rn = reiterAnwenden({ reiter: ["Basis"] })(testMaske(), []);
 pruefe("Reiter: Namen weg, Felder darauf -> Regelverstoss", enthaelt(layoutPruefen(rn.namen, rn.lines, rn.beruehrt, rn.alle).fehler, "ohne Namen"));
 var ro = reiterAnwenden({ ordnen: true })(testMaske([zl(1, "NAME", "Name", 0, 4), zl(2, "BETRAG", "Betrag", 0, 8)]), []);
 pruefe("Reiter: ordnen schliesst Luecken", ro.lines[1].getEditRow() === 5, ro.lines[1].getEditRow());
+
+/* ---------- Benutzerkonten (nur im Speicher) ---------- */
+
+pruefe("tools/list: Benutzer lesen immer, setzen nur mit -Bauen", !!namen.elo_user && !!namen.elo_user_set_login === BAUEN_ERLAUBT);
+function testUser(id, name, os, mail) {
+  var u = new IXC.UserInfo(); u.setId(id); u.setName(name); u.setType(IXC.UserInfoC.TYPE_USER);
+  var p = java.lang.reflect.Array.newInstance(java.lang.String, IXC.UserInfoC.MAX_USERPROP); p[0] = os; p[1] = mail; u.setUserProps(p);
+  return u;
+}
+pruefe("Benutzer: Windows-Name ohne Domaene passt", osGleich("DOM\\M.Muster", "m.muster") && osGleich("dom\\m.muster", "DOM\\M.Muster") && !osGleich("DOM\\m.muster", "DOM\\m.mustermann"));
+pruefe("Benutzer: leerer Windows-Name passt nie", !osGleich("", "") && !osGleich("DOM\\x", ""));
+var tu = [testUser(1, "Muster, Max", "DOM\\m.muster", "m.muster@example.com"), testUser(2, "Max Muster", "DOM\\M.Muster", "m.muster@example.com"),
+          testUser(3, "Frei, Fritz", "DOM\\f.frei", "f.frei@example.com"), testUser(4, "Leer, Lea", "", "")];
+var dw = doppelte(tu, PROP_OS), dm = doppelte(tu, PROP_MAIL);
+pruefe("Benutzer: doppelter Windows-Name gefunden (Schreibweise egal)", dw.length === 1 && dw[0].konten.length === 2 && dw[0].wert === "m.muster", JSON.stringify(dw));
+pruefe("Benutzer: doppelte Mail gefunden, leere zaehlen nicht", dm.length === 1 && dm[0].konten.length === 2, JSON.stringify(dm));
+var am = andereMit(tu, tu[0], "m.muster", PROP_OS);
+pruefe("Benutzer: andere Konten mit gleichem Windows-Namen ohne das eigene", am.length === 1 && am[0].id === "2", JSON.stringify(am));
+if (!BAUEN_ERLAUBT) {
+  var ru = callTool("elo_user_set_login", { benutzer: "1", windowsName: "" });
+  pruefe("gesperrtes Benutzerwerkzeug wird abgelehnt", ru.isError && /nicht freigeschaltet/.test(ru.content[0].text), ru.content[0].text);
+}
+
+/* ---------- Rechte und Vertretungen (nur im Speicher) ---------- */
+
+pruefe("tools/list: Rechte/Vertretungen lesen immer, setzen nur mit -Bauen",
+  !!namen.elo_acl && !!namen.elo_substitutions && !!namen.elo_acl_set === BAUEN_ERLAUBT && !!namen.elo_substitution_set === BAUEN_ERLAUBT);
+function testAcl(id, typ, acc, name) { var it = new IXC.AclItem(); it.setId(id); it.setType(typ); it.setAccess(acc); it.setName(name || ""); return it; }
+function testSord(id, owner, items, parent) {
+  var s = new IXC.Sord(); s.setId(id); s.setName("O" + id); s.setOwnerId(owner); s.setParentId(String(parent || 0));
+  var arr = java.lang.reflect.Array.newInstance(IXC.AclItem, items.length); for (var i = 0; i < items.length; i++) arr[i] = items[i];
+  s.setAclItems(arr); return s;
+}
+var person = { id: "15", name: "Muster, Max", ids: { "15": "Muster, Max", "4": "Vertrieb", "9999": "Jeder" } };
+var so = testSord(10, 3, [testAcl(53, 1, 11), testAcl(15, 1, 1), testAcl(4, 0, 2), testAcl(2, 0, 63)]);
+var wr = wirksam(so, person, 0, {});
+pruefe("Rechte: direkt R plus Gruppe W ergibt RW", rechteText(wr.bits) === "RW" && wr.quelle.length === 2, JSON.stringify(wr));
+var wl = wirksam(testSord(11, 3, [testAcl(53, 1, 63)]), person, 0, {});
+pruefe("Rechte: fremder Eintrag gibt nichts", wl.bits === 0 && rechteText(wl.bits) === "-", JSON.stringify(wl));
+var wo = wirksam(testSord(12, 15, [testAcl(0, 200, 63)]), person, 0, {});
+pruefe("Rechte: Eigentuemer-Eintrag zaehlt nur fuer den Eigentuemer", rechteText(wo.bits) === "RWDELP", JSON.stringify(wo));
+var cacheE = { "20": testSord(20, 3, [testAcl(9999, 0, 3)]) };
+var we = wirksam(testSord(21, 3, [testAcl(0, 100, 1)], 20), person, 0, cacheE);
+pruefe("Rechte: Erbe nimmt nur, was der Erbe-Eintrag zulaesst", rechteText(we.bits) === "R" && /geerbt/.test(we.quelle[0]), JSON.stringify(we));
+var wk = wirksam(testSord(22, 3, [testAcl(5, 10, 1, "Schluessel A")]), person, 0, {});
+pruefe("Rechte: Schluessel wird gemeldet, nicht geraten", wk.bits === 0 && wk.offen.length === 1, JSON.stringify(wk));
+pruefe("Vertretung: Datum JJJJ-MM-TT und TT.MM.JJJJ", isoDatum("2026-11-30", true) === "20261130235959" && isoDatum("01.12.2026", false) === "20261201000000");
+var dfehl = false; try { isoDatum("30/11/2026"); } catch (e) { dfehl = !!e.userError; }
+pruefe("Vertretung: falsches Datum abgelehnt", dfehl);
+if (!BAUEN_ERLAUBT) {
+  var ra = callTool("elo_acl_set", { objekt: "1", aenderungen: [{ name: "x", rechte: "R" }] });
+  pruefe("gesperrtes Rechtewerkzeug wird abgelehnt", ra.isError && /nicht freigeschaltet/.test(ra.content[0].text), ra.content[0].text);
+  var rv = callTool("elo_substitution_set", { benutzer: "1", vertreter: "2", bis: "2099-01-01" });
+  pruefe("gesperrtes Vertretungswerkzeug wird abgelehnt", rv.isError && /nicht freigeschaltet/.test(rv.content[0].text), rv.content[0].text);
+}
 
 OUT.println("");
 OUT.println(okZahl + " ok, " + fehlerZahl + " Fehler");

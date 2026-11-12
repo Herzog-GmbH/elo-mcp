@@ -109,7 +109,7 @@ foreach ($a in $archive) {
 }
 
 $javaExe = Join-Path $clientDir "jre\bin\java.exe"
-$skripte = @("elo.js", "elo-mcp.js", "elo-mcp-schreiben.js", "elo-mcp-bauen.js", "elo-mcp-masken.js", "elo-mcp-start.js") | ForEach-Object { Join-Path $srcDir $_ }
+$skripte = @("elo.js", "elo-mcp.js", "elo-mcp-schreiben.js", "elo-mcp-bauen.js", "elo-mcp-masken.js", "elo-mcp-benutzer.js", "elo-mcp-rechte.js", "elo-mcp-start.js") | ForEach-Object { Join-Path $srcDir $_ }
 # G1 legt sonst sofort 1/64 des RAM als Heap fest (508 MB bei 32 GB). Der C2-Compiler lohnt sich
 # fuer eine JVM, die nur Minuten laeuft und meist auf den IX wartet, nicht.
 $argList = @("-XX:+UseSerialGC", "-Xms32m", "-XX:TieredStopAtLevel=1",

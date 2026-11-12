@@ -1,5 +1,17 @@
 # Änderungen
 
+## 0.9.0 – 2026-11-12
+
+- **Benutzerkonten**, zwei neue Werkzeuge (jetzt 30):
+  - `elo_user` (Stufe 1): Konto mit Windows-Anmeldename (Eigenschaft `PROP_NAME_OS`, daran hängt die SSO-Anmeldung), Mail, letzter Anmeldung und Gruppen. Sucht nach ID, ELO-Name, Windows-Name (mit oder ohne Domäne) oder Mail und nennt andere Konten mit demselben Windows-Namen bzw. derselben Mail. `doppelte=true` listet alle doppelten Windows-Namen und Mails im Archiv (ein Abruf der Benutzerliste).
+  - `elo_user_set_login` (Stufe 3): Windows-Name und/oder Mail an einem Konto setzen oder leeren. Anlass: Zwei Konten mit demselben Windows-Namen lassen die SSO-Anmeldung scheitern. Ein Windows-Name, der schon an einem anderen Konto steht, wird abgelehnt, Gruppen ebenso. Vorschau und Token, Sicherung als JSON vorher und nachher, zurücklesen. Rechte, Gruppen, Name und Passwort bleiben unberührt.
+- **Rechte und Vertretungen**, vier neue Werkzeuge (jetzt 34), Anlass: Vertretung in der Buchhaltung, bei der ein Recht an einem Knopf fehlte:
+  - `elo_acl` (Stufe 1): Rechte eines Eintrags; mit `benutzer` die wirksamen Rechte je Person mit Herkunft (direkt, über Gruppe, geerbt vom Elternordner, als Eigentümer; Schlüssel und Beteiligte werden gemeldet, nicht geraten); mit `unterordner` die Ordner eine Ebene darunter, bei mehreren Personen nur die Abweichungen.
+  - `elo_acl_set` (Stufe 3): Rechte eines einzelnen Eintrags setzen, `wie` eine andere Person oder `entfernen`. Nicht rekursiv. Vorschau und Token, Sicherung vorher und nachher, zurücklesen, Warnung bei Verlust des eigenen P-Rechts.
+  - `elo_substitutions` (Stufe 1): Vertretungen einer Person in beide Richtungen, mit `aktivJetzt`.
+  - `elo_substitution_set` (Stufe 3): Vertretung mit Zeitraum anlegen oder beenden. Falle: `deactivateSubstitution` lehnt ELO bei zeitgesteuerten Vertretungen ab (ELOIX:5071), und Zeiträume gelten tageweise; Beenden kürzt deshalb auf gestern und lässt heute beginnende Zeiträume weg. Gelöscht wird nichts.
+- Offline-Test um Benutzer-, Rechte- und Vertretungsprüfungen erweitert.
+
 ## 0.8.0 – 2026-11-11
 
 - **Stichwortlisten** (Pull Request #1), zwei neue Werkzeuge (jetzt 28):

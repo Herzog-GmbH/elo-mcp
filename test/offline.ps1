@@ -20,7 +20,7 @@ if (-not $clientDir) { Write-Host "ELO Client (bzw. ELO Java Client) nicht gefun
 
 $java = Join-Path $clientDir "jre\bin\java.exe"
 $jvmArgs = @("-XX:+UseSerialGC", "-Dfile.encoding=UTF-8", "-cp", (Join-Path $clientDir "lib\*"), "org.mozilla.javascript.tools.shell.Main")
-foreach ($s in "elo.js", "elo-mcp.js", "elo-mcp-schreiben.js", "elo-mcp-bauen.js", "elo-mcp-masken.js") { $jvmArgs += "-f", (Join-Path $root "src\$s") }
+foreach ($s in "elo.js", "elo-mcp.js", "elo-mcp-schreiben.js", "elo-mcp-bauen.js", "elo-mcp-masken.js", "elo-mcp-benutzer.js", "elo-mcp-rechte.js") { $jvmArgs += "-f", (Join-Path $root "src\$s") }
 $jvmArgs += "-f", (Join-Path $root "test\offline.js")
 
 # Dritter Lauf wie ein Java-Prozess fuer das zweite von zwei Archiven (so startet ihn elo-mcp.ps1 mit -IxUrl2).

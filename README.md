@@ -6,7 +6,7 @@
 
 [![Getestet mit ELO 25](https://img.shields.io/badge/getestet%20mit-ELO%2025%20(IX%2025.00)-0067b8)](#voraussetzungen)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![28 Werkzeuge](https://img.shields.io/badge/Werkzeuge-28-2ea44f)](#werkzeuge)
+[![34 Werkzeuge](https://img.shields.io/badge/Werkzeuge-34-2ea44f)](#werkzeuge)
 [![Vorschau und Token](https://img.shields.io/badge/Schreiben-Vorschau%20%2B%20Token-e36209)](#sicherheit)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#voraussetzungen)
@@ -136,6 +136,9 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_workflow_export` | Vorlage als JSON-Bauplan ([Format](docs/BAUPLAN.md)) |
 | `elo_mask` | Verschlagwortungsmaske: Art, Reiter, alle Felder mit Typ, Reiter, Zeile, Spalten, Länge, Pflicht und Rechten. Dazu eine Layout-Prüfung (Reiter ohne Namen, Felder vor Zeile 4, übereinanderliegende Felder, Felder ohne Rechte, Klammern) |
 | `elo_keywords` | Stichwortliste einer Feldgruppe: Anzeigename, Paket, Einträge als Baum, auf Wunsch mit IDs |
+| `elo_user` | Benutzerkonto mit Windows-Anmeldename (für SSO), Mail, letzter Anmeldung und Gruppen; nennt andere Konten mit demselben Windows-Namen. Mit `doppelte` alle doppelten Windows-Namen und Mails im Archiv |
+| `elo_acl` | Rechte (ACL) eines Eintrags. Mit `benutzer` die wirksamen Rechte jeder Person mit Herkunft (direkt, über Gruppe, geerbt, Eigentümer); mit `unterordner` dasselbe für die Ordner eine Ebene darunter und nur die Stellen, an denen sich zwei Personen unterscheiden, z. B. für eine Vertretung |
+| `elo_substitutions` | Vertretungen einer Person: wer sie vertritt, wen sie vertritt, Zeitraum, Status, ob Aufgaben und Postbox sichtbar sind |
 
 ### Stufe 2: arbeiten (`-Schreiben`)
 
@@ -161,6 +164,9 @@ Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, 
 | `elo_mask_fields` | Felder hinten anhängen (nächste freie Zeile oder direkt unter einem Feld) oder vorhandene ändern: Name, Typ, Länge, Spalte, nur Stichwortliste, Pflicht, Rechte |
 | `elo_mask_tabs` | Reiter benennen, Felder auf einen anderen Reiter oder Platz verschieben, Zeilen lückenlos ordnen |
 | `elo_keywords_set` | Stichwortliste anlegen oder Einträge setzen: ergänzen (Standard) oder ersetzen, Unterlisten, Anzeigename und Paket. Sicherung vorher, zurücklesen danach. Ganze Listen löschen geht nicht |
+| `elo_user_set_login` | Windows-Anmeldename und/oder Mail an einem Benutzerkonto setzen oder leeren, z. B. wenn zwei Konten denselben Windows-Namen tragen und die SSO-Anmeldung deshalb scheitert. Lehnt einen Windows-Namen ab, der schon an einem anderen Konto steht. Rechte, Gruppen, Name und Passwort bleiben. Sicherung vorher und nachher, zurücklesen |
+| `elo_acl_set` | Rechte **eines** Eintrags ändern: Person oder Gruppe mit Rechten (R W D E L P, `voll`) setzen, `wie` eine andere Person, oder `entfernen`. Andere Einträge, Unterordner und Dokumente bleiben. Warnt, wenn das eigene Konto danach kein P mehr hat. Sicherung vorher und nachher, zurücklesen |
+| `elo_substitution_set` | Vertretung mit Zeitraum anlegen (Aufgaben ja, Postbox auf Wunsch) oder eine bestehende beenden. ELO rechnet tageweise: Beenden kürzt auf gestern, nichts wird gelöscht. Objektrechte gibt eine Vertretung nicht, dafür `elo_acl` |
 
 Die Prüfungen beim Bauen stammen alle aus echten Störungen:
 
@@ -176,7 +182,7 @@ Neu laden (ELOas, IX-Skripte), „Aktualisieren" im Formulardesigner und die Neu
 - **Eigenes Konto:** ELO prüft jeden Zugriff mit den Rechten der angemeldeten Person. Ein zentraler Server bräuchte ein Dienstkonto mit Hauptadministrator-Recht: Die Anmeldung im Namen anderer (`runAsUser`) lehnt der Indexserver für normale Konten ab. Ein solches Konto vermeidet dieser Server bewusst, er läuft lokal mit dem Konto der Person.
 - **Zugangsdaten:** per DPAPI verschlüsselt, nur für euer Windows-Konto lesbar. Der Vorschalt entschlüsselt sie erst beim Java-Start und gibt sie nur an den Java-Prozess weiter.
 - **Zweistufig:** Erster Aufruf = Prüfung + Vorschau + Token. Das Token gilt 5 Minuten, einmal, nur für exakt dieselben Argumente und nur, wenn sich das Objekt seit der Vorschau nicht verändert hat (Fingerabdruck aus Name, Maske, Indexfeldern, Sperre, Version). Die Hinweise an die KI verlangen, die Vorschau zu zeigen und auf Zustimmung zu warten.
-- **Nicht im Code:** Löschen (auch keine Masken und Maskenfelder), Verschieben und Rechte an Objekten ändern. Das ist nicht abgeschaltet, das gibt es schlicht nicht.
+- **Nicht im Code:** Löschen (auch keine Masken, Maskenfelder und Vertretungen), Verschieben, Rechte rekursiv über Unterordner ändern, Benutzerkonten anlegen oder löschen und deren Funktionsrechte, Gruppen oder Passwörter ändern. Rechte an einem einzelnen Eintrag ändert nur `elo_acl_set` (Stufe 3). Das ist nicht abgeschaltet, das gibt es schlicht nicht.
 - **Protokoll:** Jede Ausführung, auch fehlgeschlagene, steht in `%LOCALAPPDATA%\elo-mcp\protokoll-JJJJ-MM.jsonl` (Zeit, Konto, Server, Werkzeug, Argumente, Ergebnis).
 - **Keine Wiederholung beim Schreiben:** Lesewerkzeuge melden sich nach einer abgelaufenen Sitzung einmal neu an. Schreibende nie, damit nichts doppelt passiert.
 - **Fremder Text:** Dokumentinhalte (`elo_get_text`) können Anweisungen an die KI enthalten (Prompt-Injection). Lest deshalb jede Vorschau, bevor ihr zustimmt.
@@ -207,6 +213,8 @@ MCP-Clients starten jeden Server einmal je Sitzung. Eine JVM je Sitzung kostet r
 | `src/elo-mcp-schreiben.js` | Stufe 2, Vorschau/Token, Feldprüfung, Protokoll |
 | `src/elo-mcp-bauen.js` | Stufe 3, Bauplan, Skriptprüfungen |
 | `src/elo-mcp-masken.js` | Masken lesen (Stufe 1) und bauen (Stufe 3), Layout-Regeln |
+| `src/elo-mcp-benutzer.js` | Benutzerkonten: Windows-Name und Mail lesen, doppelte finden (Stufe 1), setzen (Stufe 3) |
+| `src/elo-mcp-rechte.js` | Objektrechte und Vertretungen lesen und vergleichen (Stufe 1), setzen (Stufe 3) |
 | `src/elo-mcp-start.js` | Hauptschleife |
 | `test/offline.ps1` | Prüfungen ohne ELO (Protokoll, Stufen, Bauplan, Skripte, Masken) |
 | `test/test-mcp.py` | Aufrufe gegen ein echtes ELO, z. B. `python -I test\test-mcp.py test\beispiel-lesen.json -- -IxUrl <url>` |

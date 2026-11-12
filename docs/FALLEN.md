@@ -47,6 +47,10 @@ Was uns beim Bau dieses Servers begegnet ist, geprüft gegen einen Indexserver 2
 | `IXConnFactory.create(user, pwd, host, runAsUser)` wird für normale Konten mit `ELOIX:3008 Unbekannter Benutzer, falsches Passwort oder Konto gesperrt` abgelehnt, sogar für das eigene Konto. Zählt als Fehlanmeldung. | Run-As geht nur mit einem Dienstkonto, das in ELO direkt Hauptadministrator ist. Ohne so ein Konto meldet sich jede Person selbst an, wie bei diesem Server. Fehlgeschlagene Anmeldungen nicht automatisch wiederholen. |
 | `ELOIX:3008` verrät den Grund nicht. Ist ELO an ein Active Directory angebunden, prüft der Indexserver Passwortanmeldungen dort; reine ELO-Konten ohne AD-Konto scheitern dann, ebenso als Run-As-Ziel. | Den Grund zeigt nur das Log des Indexservers. Dienstkonto und Zielbenutzer als AD-Konten anlegen. |
 | Ohne `System.exit(0)` hält die IX-Verbindung die JVM noch über eine Minute am Leben. | Am Ende abmelden und `System.exit(0)`. |
+| Eine Vertretung gibt dem Vertreter nur die Aufgaben (und auf Wunsch die Postbox), keine Objektrechte. Ein Knopf (Action Definition) oder Ordner, den nur die vertretene Person sieht, bleibt für den Vertreter unsichtbar. | Mit `elo_acl` beide Personen vergleichen (`unterordner=true` für eine Ordnerebene), fehlende Einträge mit `elo_acl_set` und `wie` nachziehen. |
+| `deactivateSubstitution` lehnt ELO bei zeitgesteuerten Vertretungen mit `ELOIX:5071` ab, es geht nur bei von Hand aktivierten. | Zum Beenden den Zeitraum kürzen (`checkoutSubstitutions` mit Sperre, Perioden ändern, `checkinSubstitutions`). |
+| Vertretungszeiträume gelten tageweise. Ein Ende „heute, jetzt" läuft bis Tagesende weiter. | Ende auf gestern 23:59:59 setzen; ein Zeitraum, der heute beginnt, muss ganz weg. |
+| Ein ACL-Eintrag vom Typ 100 (erben) bedeutet: Rechte des Elternordners, begrenzt durch die Bits dieses Eintrags. Typ 200 gilt nur für den Eigentümer, Typ 10 sind Schlüssel. | Wirksame Rechte rekursiv über den Elternordner rechnen; Schlüssel nicht raten, sondern melden. |
 
 ## Workflows
 
