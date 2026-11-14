@@ -5,13 +5,13 @@
 - **Farben, Gruppenaufgaben, Map eines Vorgangs, registrierte Funktionen, Formulardesigner**, sechs neue Werkzeuge (jetzt 51). Anlass: Lücken beim Bau eines Rechnungsworkflows, die bisher Einzelskripte oder der Web Client füllen mussten:
   - `elo_colors` (Stufe 1): Farbliste des Archivs mit ID, Name, Anzeigename, Kurzname und RGB (aus dem Windows-`COLORREF` umgerechnet); mit `objekt` die Farbe von bis zu 10 Objekten. `elo_get_object` zeigt die Farbe jetzt mit.
   - `elo_color_set` (Stufe 2): Farbe eines Objekts setzen, per ID, Name (`ELO.COLOR.RED`), Kurzname (`red`) oder Anzeigename (`Rot`). Mehrdeutige Namen werden abgelehnt und mit ID genannt. Vorschau bisher → neu mit ID und Name, Hinweis bei laufendem Workflow (der die Farbe als Status wieder setzen kann), Sicherung der alten Farbe, nur die Farbe wird eingecheckt (`SordC.mbKind`), danach zurücklesen.
-  - `elo_task_take` (Stufe 2): Gruppenaufgabe annehmen wie „Workflow annehmen“ im Client, mit `zurueckgeben` an die Gruppe zurückgeben. Leitet nicht weiter.
+  - `elo_task_take` (Stufe 2): Gruppenaufgabe annehmen wie „Workflow annehmen“ im Client, mit `zurueckgeben` an die Gruppe aus der Vorlage (`designDepartment`) oder an eine eigene Gruppe in `an` zurückgeben. Leitet nicht weiter.
   - `elo_function_read` (Stufe 1): registrierte Funktion ohne Freigabe, nur aus einer festen Liste lesender Funktionen. Zunächst `RF_sol_common_service_SordProvider`: höchstens 50 IDs, eine Suche nur mit Maske und Suchfeld, höchstens 300 Treffer (ohne Angabe 100).
   - `elo_function_call` (Stufe 3): beliebige registrierte Funktion, zweistufig; die Vorschau zeigt Funktion und Parameter und warnt, dass der Server nicht prüft, was die Funktion tut.
   - `elo_form_reload` (Stufe 3): Formulardesigner „Aktualisieren“ über `edit.jsp?reload=1` mit dem Ticket der Sitzung. Das Ticket geht nur an den Server des Indexservers und wird aus Antworten und Fehlermeldungen getilgt; eine Umleitung (Anmeldeseite) gilt als Fehler.
 - `elo_map_set`: mit `workflow` statt `objekt` die Map eines laufenden Vorgangs, mit derselben Vorschau, Sicherung und Rückleseprüfung.
 - `elo_forward_task`: `annehmen` nimmt eine Gruppenaufgabe vorher an und gibt sie zurück, wenn das Weiterleiten scheitert. Ohne den Schalter weist die Vorschau auf eine nicht angenommene Gruppenaufgabe hin.
-- Offline-Test um Farbsuche, Grenzen des SordProvider, Formular-Adresse und die ganzen Abläufe der neuen Schreibwerkzeuge gegen einen Indexserver im Speicher erweitert (247/321/327 Prüfungen).
+- Offline-Test um Farbsuche, Grenzen des SordProvider, Formular-Adresse und die ganzen Abläufe der neuen Schreibwerkzeuge gegen einen Indexserver im Speicher erweitert (247/323/329 Prüfungen). Live gegen ein Testarchiv durchgespielt: Farbe setzen und zurück, Map eines Vorgangs setzen und leeren, Gruppenaufgabe annehmen und zurückgeben, Formulardesigner aktualisieren; `elo_function_call` nur als Vorschau.
 
 ## 0.11.0 – 2026-11-14
 

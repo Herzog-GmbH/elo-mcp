@@ -690,7 +690,7 @@ var fbIxEcht = ELO.ix, fbConnEcht = ELO.connect, fbIdsEcht = meineIds, fbNameEch
     fbSichEcht = jsonSichern, fbMapSichEcht = mapSichern, fbHttpEcht = httpHolen, fbIxAdrEcht = ixAdresse;
 var fbKind = 1, fbCheckin = null, fbWfs = [], fbGesichert = [], fbLocks = [], fbRf = [], fbHttp = [], fbMap = { objekte: {}, wfactive: { BELEG_RUNDE: "1" } }, fbMapCheckin = null;
 var fbKnoten = new IXC.WFNode(), fbKnoten2 = new IXC.WFNode(), fbNehmen = [], fbEditFehler = false, fbForward = 0;
-fbKnoten.setId(3); fbKnoten.setType(2); fbKnoten.setName("Eingang pruefen"); fbKnoten.setUserId(3); fbKnoten.setUserName("Beispielgruppe"); fbKnoten.setEnterDateIso("20260301120000"); fbKnoten.setDepartment2(-1);
+fbKnoten.setId(3); fbKnoten.setType(2); fbKnoten.setName("Eingang pruefen"); fbKnoten.setUserId(3); fbKnoten.setUserName("Beispielgruppe"); fbKnoten.setEnterDateIso("20260301120000"); fbKnoten.setDepartment2(-1); fbKnoten.setDesignDepartment(3);
 fbKnoten2.setId(4); fbKnoten2.setType(2); fbKnoten2.setName("Erfassen"); fbKnoten2.setUserId(5); fbKnoten2.setUserName("Muster, Max"); fbKnoten2.setEnterDateIso("20260301120000");
 var fbWf = { getId: function () { return 5005; }, getName: function () { return "Vorgang Beispiel"; }, getObjId: function () { return 4711; }, getLockName: function () { return ""; },
              getNodes: function () { return [fbKnoten, fbKnoten2]; },
@@ -716,10 +716,17 @@ ELO.ix = function () {
       fbMapCheckin = { domain: String(domain), id: String(id), objId: objId };
       for (var i = 0; i < arr.length; i++) { var k = String(arr[i].getKey()), v = String(arr[i].getValue()); if (v === "") delete fbMap[String(domain)][k]; else fbMap[String(domain)][k] = v; }
     },
+    // Wie im Testarchiv beobachtet: ohne Benutzer nimmt das eigene Konto den Knoten (inUseDate gesetzt),
+    // mit Gruppen-ID und RESET_IN_USE_DATE geht er an die Gruppe zurueck. department2 bleibt -1.
     takeWorkFlowNode: function (flowId, nodeId, user, flags) {
-      fbNehmen.push(Number(flags));
-      if (Number(flags) === IXC.WFTakeNodeC.RESET_DEPARTMENT2) { fbKnoten.setUserId(fbKnoten.getDepartment2()); fbKnoten.setUserName("Beispielgruppe"); fbKnoten.setDepartment2(-1); }
-      else { fbKnoten.setDepartment2(fbKnoten.getUserId()); fbKnoten.setUserId(75); fbKnoten.setUserName("Test, Konto"); }
+      fbNehmen.push(Number(flags) + ":" + (user === null ? "null" : String(user)));
+      if (user === null) { fbKnoten.setUserId(75); fbKnoten.setUserName("Test, Konto"); fbKnoten.setInUseDateIso("20260301130000"); }
+      else { fbKnoten.setUserId(parseInt(String(user), 10)); fbKnoten.setUserName(String(user) === "3" ? "Beispielgruppe" : "Gruppe " + user); if (Number(flags) & IXC.WFTakeNodeC.RESET_IN_USE_DATE) fbKnoten.setInUseDateIso(""); }
+    },
+    checkoutUser: function (wer) {
+      var t = { "Beispielgruppe": [3, IXC.UserInfoC.TYPE_GROUP], "3": [3, IXC.UserInfoC.TYPE_GROUP], "Andere Gruppe": [9, IXC.UserInfoC.TYPE_GROUP], "Muster, Max": [5, IXC.UserInfoC.TYPE_USER] }[String(wer)];
+      if (!t) throw "[ELOIX:5023]nicht gefunden";
+      return { getId: function () { return t[0]; }, getType: function () { return t[1]; }, getName: function () { return String(wer); } };
     },
     beginEditWorkFlowNode: function () { if (fbEditFehler) throw "[ELOIX:2000]Knoten nicht bearbeitbar"; return { getNode: function () { return fbKnoten; } }; },
     forwardWorkflowNode: function () { fbForward++; },
@@ -780,14 +787,17 @@ try {
     pruefe("elo_task_take: Vorschau jetzt/danach, nichts angenommen", /^Vorschau/.test(tkV.modus) && tkV.vorschau.jetztBei === "Beispielgruppe" && tkV.vorschau.danachBei === "Test, Konto" &&
            fbNehmen.length === 0, JSON.stringify(tkV));
     var tkA = mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", token: tkV.token }));
-    pruefe("elo_task_take: angenommen und zurueckgelesen", tkA.modus === "ausgefuehrt" && fbNehmen.join() === String(IXC.WFTakeNodeC.DEFAULT) &&
+    pruefe("elo_task_take: angenommen und zurueckgelesen", tkA.modus === "ausgefuehrt" && fbNehmen.join() === IXC.WFTakeNodeC.DEFAULT + ":null" &&
            tkA.ergebnis.rueckgelesen === "ok, wie geplant" && tkA.ergebnis.jetztBei === "Test, Konto", JSON.stringify(tkA));
-    pruefe("elo_task_take: schon angenommen", /schon angenommen/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3" })).fehler));
+    pruefe("elo_task_take: schon angenommen", /schon bei dir/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3" })).fehler));
+    pruefe("elo_task_take: an nur mit zurueckgeben", /nur zusammen mit zurueckgeben/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", an: "3" })).fehler));
+    pruefe("elo_task_take: an muss eine eigene Gruppe sein", /nicht in der Gruppe/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", zurueckgeben: true, an: "Andere Gruppe" })).fehler) &&
+           /keine Gruppe/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", zurueckgeben: true, an: "Muster, Max" })).fehler));
     var tkZ = mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", zurueckgeben: true }));
     var tkZA = mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", zurueckgeben: true, token: tkZ.token }));
-    pruefe("elo_task_take: zurueckgeben an die Gruppe", tkZ.vorschau.danachBei === "Beispielgruppe" && fbNehmen[1] === IXC.WFTakeNodeC.RESET_DEPARTMENT2 &&
-           tkZA.ergebnis.rueckgelesen === "ok, wie geplant" && fbKnoten.getUserId() === 3, JSON.stringify(tkZA));
-    pruefe("elo_task_take: zurueckgeben ohne Annehmen abgelehnt", /nur bei einer Gruppenaufgabe/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", zurueckgeben: true })).fehler));
+    pruefe("elo_task_take: zurueckgeben an die Gruppe aus der Vorlage", tkZ.vorschau.danachBei === "Beispielgruppe" && fbNehmen[1] === IXC.WFTakeNodeC.RESET_IN_USE_DATE + ":3" &&
+           tkZA.ergebnis.rueckgelesen === "ok, wie geplant" && fbKnoten.getUserId() === 3 && S(fbKnoten.getInUseDateIso()) === "", JSON.stringify(tkZA));
+    pruefe("elo_task_take: zurueckgeben, wenn die Aufgabe nicht bei mir liegt, abgelehnt", /die bei dir liegt/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", zurueckgeben: true })).fehler));
     pruefe("elo_task_take: fremder Knoten abgelehnt", /keiner Gruppe/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "4" })).fehler));
     pruefe("elo_task_take: Knoten-ID muss eine Zahl sein", /Zahl/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "x" })).fehler));
 
@@ -797,11 +807,11 @@ try {
     var fwV1 = mpJson(callTool("elo_forward_task", { workflowId: "5005", knotenId: "3", annehmen: true }));
     var fwA1 = mpJson(callTool("elo_forward_task", { workflowId: "5005", knotenId: "3", annehmen: true, token: fwV1.token }));
     pruefe("elo_forward_task annehmen: scheitert das Weiterleiten, geht die Aufgabe zurueck", fwV1.vorschau.vorherAnnehmen === true && /ELOIX:2000/.test(fwA1.fehler) &&
-           fbNehmen.join() === IXC.WFTakeNodeC.DEFAULT + "," + IXC.WFTakeNodeC.RESET_DEPARTMENT2 && fbKnoten.getUserId() === 3 && fbForward === 0, JSON.stringify(fwA1) + " " + fbNehmen.join());
+           fbNehmen.join() === IXC.WFTakeNodeC.DEFAULT + ":null," + IXC.WFTakeNodeC.RESET_IN_USE_DATE + ":3" && fbKnoten.getUserId() === 3 && fbForward === 0, JSON.stringify(fwA1) + " " + fbNehmen.join());
     fbNehmen = []; fbEditFehler = false;
     var fwV2 = mpJson(callTool("elo_forward_task", { workflowId: "5005", knotenId: "3", annehmen: true }));
     var fwA2 = mpJson(callTool("elo_forward_task", { workflowId: "5005", knotenId: "3", annehmen: true, token: fwV2.token }));
-    pruefe("elo_forward_task annehmen: erst annehmen, dann weiterleiten", fwA2.modus === "ausgefuehrt" && fbNehmen.join() === String(IXC.WFTakeNodeC.DEFAULT) && fbForward === 1, JSON.stringify(fwA2));
+    pruefe("elo_forward_task annehmen: erst annehmen, dann weiterleiten", fwA2.modus === "ausgefuehrt" && fbNehmen.join() === IXC.WFTakeNodeC.DEFAULT + ":null" && fbForward === 1, JSON.stringify(fwA2));
   } else {
     pruefe("gesperrtes Farbwerkzeug wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_color_set", { objekt: "1", farbe: "1" })).fehler));
     pruefe("gesperrtes Annehmen wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_task_take", { workflowId: "1", knotenId: "1" })).fehler));

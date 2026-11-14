@@ -398,42 +398,63 @@ function knotenBesitz(node, ids) {
   if (uid === S(ELO.connect().getLoginResult().getUser().getId())) return "ich";
   return (ids || meineIds())[uid] ? "gruppe" : "fremd";
 }
-/* Nach dem Annehmen steht die urspruengliche Gruppe in department2 (sonst -1). */
-function knotenGruppeVorher(node) { var d = -1; try { d = Number(node.getDepartment2()); } catch (e) {} return d; }
+/* Die Gruppe, an die eine angenommene Aufgabe zurueckgeht: an (ID oder Name) oder der Bearbeiter aus der Vorlage
+   (designDepartment; ELO setzt beim Annehmen nur userId und inUseDate um, department2 bleibt -1). -1, wenn keine Gruppe
+   von mir. */
+function knotenGruppe(node, ids, an) {
+  var g = -1;
+  if (trim(an)) {
+    var u;
+    try { u = ELO.ix().checkoutUser(trim(an), IXC.CheckoutUsersC.BY_IDS_RAW, IXC.LockC.NO); } catch (e) { fail("an: Gruppe '" + trim(an) + "' nicht gefunden."); }
+    if (u.getType() !== IXC.UserInfoC.TYPE_GROUP) fail("an: '" + S(u.getName()) + "' ist keine Gruppe.");
+    g = Number(u.getId());
+    if (!ids[S(g)]) fail("an: Du bist nicht in der Gruppe '" + S(u.getName()) + "'.");
+    return g;
+  }
+  try { g = Number(node.getDesignDepartment()); } catch (e) {}
+  return (g >= 0 && S(g) !== S(ELO.connect().getLoginResult().getUser().getId()) && ids[S(g)]) ? g : -1;
+}
 
 function annehmenPlan(a) {
-  var flowId = trim(a.workflowId), nodeId = trim(a.knotenId), k = aktiverKnoten(flowId, nodeId), n = k.node, warn = [];
-  var zurueck = a.zurueckgeben === true, besitz = knotenBesitz(n), dep2 = knotenGruppeVorher(n), bei = S(n.getUserName()), danach;
+  var flowId = trim(a.workflowId), nodeId = trim(a.knotenId), k = aktiverKnoten(flowId, nodeId), n = k.node, warn = [], ids = meineIds();
+  var zurueck = a.zurueckgeben === true, besitz = knotenBesitz(n, ids), bei = S(n.getUserName()), danach, gruppe = -1;
   if (n.getType() !== IXC.WFNodeC.TYPE_PERSONNODE) fail("Knoten '" + S(n.getName()) + "' ist kein Personenknoten.");
+  if (trim(a.an) && !zurueck) fail("an gilt nur zusammen mit zurueckgeben=true.");
   if (!zurueck) {
-    if (besitz === "ich") fail(dep2 >= 0 ? "Die Aufgabe hast du schon angenommen. Zurueckgeben: zurueckgeben=true." : "Die Aufgabe ist dir persoenlich zugeordnet; Annehmen ist nicht noetig.");
-    if (besitz === "fremd") fail("Der Knoten ist " + bei + " zugeordnet" + (dep2 >= 0 ? " (hat ihn angenommen)" : "") + ", keiner Gruppe, in der du bist.");
+    if (besitz === "ich") fail(knotenGruppe(n, ids) >= 0 ? "Die Aufgabe liegt schon bei dir (angenommen). Zurueckgeben: zurueckgeben=true." : "Die Aufgabe ist dir persoenlich zugeordnet; Annehmen ist nicht noetig.");
+    if (besitz === "fremd") fail("Der Knoten ist " + bei + " zugeordnet, keiner Gruppe, in der du bist" + (S(n.getInUseDateIso()) ? " (vermutlich hat ihn jemand angenommen)." : "."));
     danach = S(ELO.connect().getLoginResult().getUser().getName());
     warn.push("Danach sehen die anderen Mitglieder von " + bei + " die Aufgabe nicht mehr. Zurueckgeben: dasselbe Werkzeug mit zurueckgeben=true.");
   } else {
-    if (besitz !== "ich" || dep2 < 0) fail("Zurueckgeben geht nur bei einer Gruppenaufgabe, die du angenommen hast. Der Knoten ist " + bei + " zugeordnet.");
-    danach = benutzerName(dep2) || ("Gruppe " + dep2);
+    if (besitz !== "ich") fail("Zurueckgeben geht nur bei einer Aufgabe, die bei dir liegt. Der Knoten ist " + bei + " zugeordnet.");
+    gruppe = knotenGruppe(n, ids, a.an);
+    if (gruppe < 0) fail("In der Vorlage steht am Knoten keine Gruppe, in der du bist. Die Gruppe mit an angeben (ID oder Name).");
+    danach = benutzerName(gruppe) || ("Gruppe " + gruppe);
   }
   if (S(n.getFormSpec())) warn.push("Der Knoten hat das Formular '" + S(n.getFormSpec()) + "'; Annehmen leitet nicht weiter und aendert keine Werte.");
-  return { flowId: parseInt(flowId, 10), nodeId: parseInt(nodeId, 10), zurueck: zurueck, gruppe: dep2, warnungen: warn,
-           fp: flowId + "|" + nodeId + "|" + S(n.getUserId()) + "|" + dep2 + "|" + S(n.getEnterDateIso()) + "|" + S(n.getExitDateIso()),
+  return { flowId: parseInt(flowId, 10), nodeId: parseInt(nodeId, 10), zurueck: zurueck, gruppe: gruppe, warnungen: warn,
+           fp: flowId + "|" + nodeId + "|" + S(n.getUserId()) + "|" + gruppe + "|" + S(n.getInUseDateIso()) + "|" + S(n.getEnterDateIso()) + "|" + S(n.getExitDateIso()),
            vorschau: { aktion: zurueck ? "Gruppenaufgabe zurueckgeben" : "Gruppenaufgabe annehmen", workflow: S(k.wf.getName()) + " [" + flowId + "]",
                        objekt: S(k.wf.getObjId()), knoten: S(n.getName()) + " [" + nodeId + "]", jetztBei: bei, danachBei: danach } };
 }
 
-function knotenNehmen(flowId, nodeId, zurueck) {
-  ELO.ix().takeWorkFlowNode(flowId, nodeId, null, zurueck ? IXC.WFTakeNodeC.RESET_DEPARTMENT2 : IXC.WFTakeNodeC.DEFAULT, IXC.LockC.NO);
+/* Annehmen: Knoten an das eigene Konto, inUseDate gesetzt. Zurueckgeben (an = Gruppen-ID): Knoten an die Gruppe,
+   inUseDate geleert. Im Test geprueft: RESET_DEPARTMENT2 allein aendert nichts. */
+function knotenNehmen(flowId, nodeId, an) {
+  if (an === undefined || an === null || an < 0) ELO.ix().takeWorkFlowNode(flowId, nodeId, null, IXC.WFTakeNodeC.DEFAULT, IXC.LockC.NO);
+  else ELO.ix().takeWorkFlowNode(flowId, nodeId, S(an), IXC.WFTakeNodeC.RESET_IN_USE_DATE, IXC.LockC.NO);
 }
 
 tool("elo_task_take",
   "Nimmt eine Gruppenaufgabe an, wie 'Workflow annehmen' im Client (zweistufig): Der Knoten geht vom Gruppenkonto an das angemeldete Konto, " +
-  "die anderen Gruppenmitglieder sehen ihn nicht mehr. Leitet nicht weiter. Mit zurueckgeben=true geht eine angenommene Aufgabe an die Gruppe zurueck. " +
-  "ELO 25 leitet eine Gruppenaufgabe erst nach dem Annehmen weiter; elo_forward_task kann das mit annehmen=true in einem Schritt.",
+  "die anderen Gruppenmitglieder sehen ihn nicht mehr. Leitet nicht weiter. Mit zurueckgeben=true geht eine angenommene Aufgabe an die Gruppe aus der Vorlage zurueck " +
+  "(oder an die Gruppe in an). ELO 25 leitet eine Gruppenaufgabe erst nach dem Annehmen weiter; elo_forward_task kann das mit annehmen=true in einem Schritt.",
   { workflowId: { type: "string" }, knotenId: { type: "string" },
-    zurueckgeben: { type: "boolean", description: "Angenommene Aufgabe an die Gruppe zurueckgeben" }, token: P_TOKEN },
+    zurueckgeben: { type: "boolean", description: "Aufgabe, die bei dir liegt, an die Gruppe zurueckgeben" },
+    an: { type: "string", description: "Nur mit zurueckgeben: Gruppe (ID oder Name), Standard die Gruppe aus der Vorlage" }, token: P_TOKEN },
   ["workflowId", "knotenId"], function (a) {
     return zweiSchritte("elo_task_take", a, function () { return annehmenPlan(a); }, function (p) {
-      knotenNehmen(p.flowId, p.nodeId, p.zurueck);
+      knotenNehmen(p.flowId, p.nodeId, p.zurueck ? p.gruppe : -1);
       var n = aktiverKnoten(S(p.flowId), S(p.nodeId)).node, uid = S(n.getUserId());
       var ok = p.zurueck ? uid === S(p.gruppe) : uid === S(ELO.connect().getLoginResult().getUser().getId());
       return { workflowId: S(p.flowId), knotenId: S(p.nodeId), jetztBei: S(n.getUserName()),
@@ -473,13 +494,13 @@ tool("elo_forward_task",
                 bearbeiter: S(node.getUserName()), nachfolger: optionen.filter(function (o) { return ziel.indexOf(o.knotenId) >= 0; }), kommentar: kommentar };
       if (nehmen) v.vorherAnnehmen = true;
       return { vorschau: v, warnungen: warn, fp: flowId + "|" + nodeId + "|" + S(node.getEnterDateIso()) + "|" + S(node.getExitDateIso()) + "|" + S(node.getUserId()) + "|" + nehmen,
-               flowId: parseInt(flowId, 10), nodeId: parseInt(nodeId, 10), ziel: ziel, kommentar: kommentar, nehmen: nehmen };
+               flowId: parseInt(flowId, 10), nodeId: parseInt(nodeId, 10), ziel: ziel, kommentar: kommentar, nehmen: nehmen, gruppe: nehmen ? Number(node.getUserId()) : -1 };
     }, function (p) {
-      if (p.nehmen) knotenNehmen(p.flowId, p.nodeId, false);
+      if (p.nehmen) knotenNehmen(p.flowId, p.nodeId, -1);
       var edit;
       try { edit = ELO.ix().beginEditWorkFlowNode(p.flowId, p.nodeId, IXC.LockC.YES); }
       catch (e0) {
-        if (p.nehmen) { try { knotenNehmen(p.flowId, p.nodeId, true); } catch (e1) { log("Zurueckgeben fehlgeschlagen: " + e1); } }
+        if (p.nehmen) { try { knotenNehmen(p.flowId, p.nodeId, p.gruppe); } catch (e1) { log("Zurueckgeben fehlgeschlagen: " + e1); } }
         throw e0;
       }
       try {
@@ -490,7 +511,7 @@ tool("elo_forward_task",
         ELO.ix().forwardWorkflowNode(p.flowId, p.nodeId, fi, IXC.LockC.YES);
       } catch (e) {
         try { ELO.ix().endEditWorkFlowNode(p.flowId, p.nodeId, false, true, null, null, null); } catch (e2) { log("Knoten entsperren fehlgeschlagen: " + e2); }
-        if (p.nehmen) { try { knotenNehmen(p.flowId, p.nodeId, true); } catch (e3) { log("Zurueckgeben fehlgeschlagen: " + e3); } }
+        if (p.nehmen) { try { knotenNehmen(p.flowId, p.nodeId, p.gruppe); } catch (e3) { log("Zurueckgeben fehlgeschlagen: " + e3); } }
         throw e;
       }
       var akt = [];
