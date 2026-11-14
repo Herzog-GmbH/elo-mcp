@@ -95,4 +95,4 @@ args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", 'C:\Tools\elo-mcp\e
 - **Nur entfernte Server (HTTP):** Das geht mit diesem Server nicht direkt. Er ist bewusst lokal, damit jede Person mit dem eigenen ELO-Konto arbeitet.
 
 ## Test
-Nach dem Verbinden „Wer bin ich in ELO?" fragen. `elo_whoami` zeigt Konto, Server, IX-Version und die freigeschalteten Stufen. Ohne `-Schreiben` und `-Bauen` sieht die KI nur die 13 lesenden Werkzeuge.
+Nach dem Verbinden „Wer bin ich in ELO?" fragen. `elo_whoami` zeigt Konto, Server, IX-Version und die freigeschalteten Stufen. Ohne `-Schreiben` und `-Bauen` sieht die KI nur die 22 lesenden Werkzeuge.

@@ -37,7 +37,7 @@
 param(
   # IX-URL des ELO-Servers, z. B. https://elo.example.com:9093/ix-Archiv/ix (alternativ Umgebungsvariable ELO_IX_URL).
   [string] $IxUrl = $env:ELO_IX_URL,
-  # Stufe 2 freischalten: ablegen, neue Version, Indexfelder, Workflow starten, Aufgabe weiterleiten.
+  # Stufe 2 freischalten: ablegen, neue Version, Indexfelder, Map-Felder, Feed-Kommentar, Workflow starten, Aufgabe weiterleiten.
   [switch] $Schreiben,
   # Stufe 3 freischalten: Workflow-Vorlagen, Skripte, ELOas-Regeln, Formularseiten bauen. Am besten nur gegen ein Testarchiv.
   [switch] $Bauen,
@@ -109,7 +109,7 @@ foreach ($a in $archive) {
 }
 
 $javaExe = Join-Path $clientDir "jre\bin\java.exe"
-$skripte = @("elo.js", "elo-mcp.js", "elo-mcp-schreiben.js", "elo-mcp-bauen.js", "elo-mcp-masken.js", "elo-mcp-benutzer.js", "elo-mcp-rechte.js", "elo-mcp-vorgaenge.js", "elo-mcp-start.js") | ForEach-Object { Join-Path $srcDir $_ }
+$skripte = @("elo.js", "elo-mcp.js", "elo-mcp-schreiben.js", "elo-mcp-bauen.js", "elo-mcp-masken.js", "elo-mcp-benutzer.js", "elo-mcp-rechte.js", "elo-mcp-vorgaenge.js", "elo-mcp-notizen.js", "elo-mcp-start.js") | ForEach-Object { Join-Path $srcDir $_ }
 # G1 legt sonst sofort 1/64 des RAM als Heap fest (508 MB bei 32 GB). Der C2-Compiler lohnt sich
 # fuer eine JVM, die nur Minuten laeuft und meist auf den IX wartet, nicht.
 $argList = @("-XX:+UseSerialGC", "-Xms32m", "-XX:TieredStopAtLevel=1",

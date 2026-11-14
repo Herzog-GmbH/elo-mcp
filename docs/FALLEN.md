@@ -39,6 +39,22 @@ Was uns beim Bau dieses Servers begegnet ist, geprüft gegen einen Indexserver 2
 | Zeilen-IDs 50 bis 59 sind für ELO-Systemfelder reserviert (`ELO_XLINK`, `ELO_FNAME` …), mehr als 199 geht nicht. | Neue IDs nach der höchsten vergeben und 50 bis 59 überspringen. |
 | Eine geänderte Maske sieht der ELO Client erst nach einer Neuanmeldung. | Nach dem Speichern zurücklesen und vergleichen, im Client neu anmelden. |
 
+## Notizen, Map-Felder und Feed
+
+| Falle | Was stattdessen |
+|---|---|
+| `Note.desc` enthält bei Text- und Stempelnotizen vor dem Text einen Vorspann fester Länge, z. B. `9+F70505FA0360Calibri …`: 2 Zeichen Kennung, Schrifthöhe (2 hex), Farbe (6 hex), Winkel (4 Ziffern), Schriftname auf 32 Zeichen aufgefüllt, zusammen 46 Zeichen. | `note.getNoteText().getText()` liefert den Text ohne Vorspann, `getFontInfo()` die Schrift. Fehlt `noteText`, die ersten 46 Zeichen abschneiden. |
+| In Stempeln steht der Zeilenwechsel als die zwei Zeichen `\n`, nicht als Zeilenende. | Nur bei Stempeln umwandeln, in anderen Notizen kann `\n` Teil des Textes sein (Pfad). |
+| Die Art einer Notiz ist nur eine Nummer (`Note.type`): 1 bis 3 Haftnotizen, ab 10 Anmerkungen auf der Seite, z. B. 20 Textnotiz (`TYPE_ANNOTATION_NOTE_WITHFONT`) und 23 Stempel (`TYPE_ANNOTATION_STAMP_NEW`). | Die Namen stehen als Konstanten in `NoteC`; per Reflection lesen, dann passt es auch zu anderen IX-Versionen. |
+| Stempel und Notizen liegen auf dem Bild. Die Suche findet sie nicht, und in keinem Feld steht, wer wann gestempelt hat. | Je Dokument mit `checkoutNotes(objId, null, NoteC.mbAll, LockC.NO)` lesen (`elo_notes`). Für Auswertbares Felder, Map-Felder oder den Feed nehmen. |
+| `checkinMap(domain, id, objId, KeyValue[], lock)` will die Objekt-ID zweimal, einmal als Text und einmal als Zahl. Es ändert nur die übergebenen Schlüssel, eine Prüfung gegen eine Maske gibt es nicht: Ein Tippfehler legt still einen neuen Schlüssel an. Ein leerer Wert entfernt den Eintrag ganz. | Vorher mit `checkoutMap` lesen, neue Schlüssel und eine andere Groß-/Kleinschreibung in der Vorschau melden (`elo_map_set`). |
+| Die Map eines Vorgangs liegt in einem eigenen Bereich, nicht am Objekt. | `checkoutMap(MapDomainC.DOMAIN_WORKFLOW_ACTIVE, <Workflow-ID>, null, LockC.NO)`, für beendete `DOMAIN_WORKFLOW_FINISHED` (`elo_map` mit `workflow`). |
+| Den Feed liefert nicht der Indexserver-Dienst selbst, sondern `conn.getFeedService()`. Gesucht wird über `FindActionsInfo.setObjId(<Objekt-ID>)`, das Ergebnis steht in `FindResult.getActions()`, neueste zuerst. | `findFirstActions(info, max, ActionC.mbAll)` mit Obergrenze, danach `ix().findClose(searchId)`. `setActionTypes` grenzt schon auf dem Server ein. |
+| Automatische Feed-Einträge (`EActionType.AutoComment`, z. B. aus Workflow-Skripten) tragen keinen Text, sondern ein JSON mit Sprachdatei, Schlüssel und Daten (`{"file": …, "key": …, "data": […]}`). Der angezeigte Wortlaut steht nur in der Sprachdatei auf dem Server. | Schlüssel und Daten auswerten, nicht nach dem Wortlaut suchen. |
+| Ein Kommentar im Feed braucht die **GUID** des Objekts, nicht die ID, und entsteht in zwei Schritten. Die Zeitstempel im Feed kommen in UTC. | `createAction(EActionType.UserComment, <Objekt-GUID>)`, `setText(…)`, dann `checkinAction(action, ActionC.mbAll)`; das liefert die GUID des Eintrags zum Zurücklesen. |
+| Erwähnungen stehen im Kommentartext als `@[Name (GUID)]` und lösen eine Benachrichtigung aus. | Beim Lesen auf `@Name` kürzen; beim Schreiben in der Vorschau darauf hinweisen. |
+| In Map-Feldern stehen auch Passwörter, die ein Formular abfragt. | Schlüssel, die auf `_PW` enden oder nach Passwort oder Token aussehen, nicht ausgeben und nicht über die API setzen. |
+
 ## Rechte und Anmeldung
 
 | Falle | Was stattdessen |

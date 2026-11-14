@@ -1,5 +1,16 @@
 # Änderungen
 
+## 0.11.0 – 2026-11-14
+
+- **Notizen, Map-Felder und Feed**, fünf neue Werkzeuge (jetzt 45). Anlass: Freigaben und Hinweise, die nur als Stempel und Textnotiz auf dem Beleg stehen, Formularwerte in Map-Feldern und Feed-Einträge aus Workflows, alles bisher nur über Einzelskripte lesbar:
+  - `elo_notes` (Stufe 1): Haftnotizen, Textnotizen, Stempel und andere Anmerkungen eines Objekts mit Art (Typnummer aus `NoteC` in Klartext), Seite, Verfasser, Datum und Text. Text- und Stempelnotizen tragen in `desc` einen Formatvorspann fester Länge (Schrift, Farbe); der Text kommt ohne ihn, mit `roh` zusätzlich der gespeicherte Wert. Ein Objekt oder eine Liste bis 10, nacheinander gelesen. Gelöschte Notizen werden nur gezählt.
+  - `elo_map` (Stufe 1): Map-Felder eines Objekts, mit `workflow` die Map eines laufenden oder beendeten Vorgangs. `filter` als Schlüssel-Anfang oder Muster mit `*` und `?`, höchstens 500 Felder, lange Werte gekürzt. Werte von Schlüsseln, die auf `_PW` enden oder nach Passwort/Token aussehen, kommen als `***`.
+  - `elo_map_set` (Stufe 2): Map-Felder eines Objekts setzen. Vorschau bisher → neu und Token, Sicherung der alten Werte als JSON vorher und nachher, zurücklesen. Leeren nur über `leeren` (der Indexserver entfernt den Eintrag dann ganz), ein leerer Wert in `felder` wird abgelehnt. Abgelehnt werden auch Passwort- und Tokenschlüssel, Platzhalter im Schlüssel und ein Schlüssel, den es am Objekt in anderer Groß-/Kleinschreibung gibt. Ein neuer Schlüssel wird in der Vorschau als solcher genannt. Die Map eines Vorgangs ändert das Werkzeug nicht.
+  - `elo_feed` (Stufe 1): Feed eines Objekts, neueste Einträge zuerst, höchstens 50. Kommentare mit Erwähnungen als `@Name`; automatische Einträge (z. B. aus Workflow-Skripten) mit Sprachdatei, Schlüssel und Daten statt Text, weil der angezeigte Wortlaut nur in der Sprachdatei auf dem Server steht. `arten` grenzt ein, `roh` zeigt Typ, GUID und gespeicherten Text.
+  - `elo_feed_post` (Stufe 2): Kommentar in den Feed eines Objekts schreiben, unter dem angemeldeten Konto. Vorschau und Token; die Vorschau meldet denselben Text im Feed und Erwähnungen, die eine Benachrichtigung auslösen. Danach zurücklesen. Ändern und Löschen gibt es nicht.
+- Notizen und Stempel setzt oder löscht der Server nicht.
+- Offline-Test um Vorspann, Notizarten, Maskierung, Filter, Eingabeprüfung, Feed-Einträge und die ganzen Abläufe von `elo_map_set` und `elo_feed_post` gegen einen Indexserver im Speicher erweitert (219/259/265 Prüfungen).
+
 ## 0.10.0 – 2026-11-12
 
 - **Laufende Vorgänge reparieren und Vorlagen gezielt ändern**, sechs neue Werkzeuge (jetzt 40). Anlass: Änderungen an Onboarding und Offboarding, die bisher nur über Einzelskripte gingen:

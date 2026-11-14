@@ -6,7 +6,7 @@
 
 [![Getestet mit ELO 25](https://img.shields.io/badge/getestet%20mit-ELO%2025%20(IX%2025.00)-0067b8)](#voraussetzungen)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![40 Werkzeuge](https://img.shields.io/badge/Werkzeuge-40-2ea44f)](#werkzeuge)
+[![45 Werkzeuge](https://img.shields.io/badge/Werkzeuge-45-2ea44f)](#werkzeuge)
 [![Vorschau und Token](https://img.shields.io/badge/Schreiben-Vorschau%20%2B%20Token-e36209)](#sicherheit)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#voraussetzungen)
@@ -25,7 +25,7 @@ Ein [MCP](https://modelcontextprotocol.io/)-Server für das **ELO ECM** der ELO 
 
 - **Jeder MCP-Client:** Claude Code, Claude Desktop, Codex, GitHub Copilot, Gemini CLI, Cursor, … ([docs/CLIENTS.md](docs/CLIENTS.md))
 - **Rechte je Person:** Der Server läuft lokal beim Anwender und meldet sich mit dessen eigenem ELO-Konto an. ELO prüft jeden Zugriff selbst. Kein Dienstkonto, kein Nachbau von Rechten.
-- **Mehr als Suchen:** Volltext- und Feldsuche, Textauszug aus PDF/Office/E-Mail, wirksame Rechte mit Herkunft, Workflows lesen, starten und weiterleiten.
+- **Mehr als Suchen:** Volltext- und Feldsuche, Textauszug aus PDF/Office/E-Mail, Notizen und Stempel auf Dokumenten, Map-Felder, Feed, wirksame Rechte mit Herkunft, Workflows lesen, starten und weiterleiten.
 - **Bauen mit Prüfungen:** Workflow-Vorlagen als JSON-Bauplan exportieren, ändern und zurückschreiben. ELOas-Regeln, IX-Skripte und Formularseiten hochladen, vorher kompiliert und auf bekannte Fallen geprüft. Verschlagwortungsmasken anlegen und erweitern, mit Regeln für Reiter, Zeilen und Rechte.
 - **Drei Stufen:** Lesen ist immer an. Schreiben (`-Schreiben`) und Bauen (`-Bauen`) schaltet ihr einzeln frei. Ohne Schalter sieht die KI die Werkzeuge gar nicht.
 - **Zweistufig schreiben:** Jede Änderung liefert zuerst eine Vorschau und ein Einmal-Token. Erst ein zweiter Aufruf mit Token führt aus.
@@ -89,7 +89,7 @@ Alle Schalter stehen hinter dem Skriptpfad in der Client-Konfiguration.
 | Schalter | Wirkung |
 |---|---|
 | `-IxUrl <url>` | IX-URL des ELO-Servers (Pflicht, alternativ Umgebungsvariable `ELO_IX_URL`) |
-| `-Schreiben` | Stufe 2 freischalten: ablegen, neue Version, Indexfelder, Workflow starten, Aufgabe weiterleiten |
+| `-Schreiben` | Stufe 2 freischalten: ablegen, neue Version, Indexfelder, Map-Felder, Feed-Kommentar, Workflow starten, Aufgabe weiterleiten |
 | `-Bauen` | Stufe 3 freischalten: Workflow-Vorlagen, Skripte, ELOas-Regeln, Formularseiten, Verschlagwortungsmasken. **Am besten nur gegen ein Testarchiv.** |
 | `-CredentialFile <pfad>` | andere Zugangsdaten, z. B. ein zweites Konto für das Testarchiv. Standard `%LOCALAPPDATA%\elo-mcp\elo-credential.xml` |
 | `-ClientDir <pfad>` | Ordner des ELO Client bzw. ELO Java Client, wenn er nicht unter `Programme` liegt |
@@ -140,6 +140,9 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_acl` | Rechte (ACL) eines Eintrags. Mit `benutzer` die wirksamen Rechte jeder Person mit Herkunft (direkt, über Gruppe, geerbt, Eigentümer); mit `unterordner` dasselbe für die Ordner eine Ebene darunter und nur die Stellen, an denen sich zwei Personen unterscheiden, z. B. für eine Vertretung |
 | `elo_substitutions` | Vertretungen einer Person: wer sie vertritt, wen sie vertritt, Zeitraum, Status, ob Aufgaben und Postbox sichtbar sind |
 | `elo_workflows_of_template` | Laufende Vorgänge einer Vorlage (nur aktive, Suche über die Vorlagen-ID, höchstens 100), auf Wunsch für die ersten zehn mit ihren aktiven Knoten |
+| `elo_notes` | Notizen eines Dokuments oder Ordners: Haftnotizen, Textnotizen, Stempel und andere Anmerkungen mit Art, Seite, Verfasser, Datum und Text. Der Formatvorspann von Text- und Stempelnotizen ist abgetrennt, mit `roh` kommt der gespeicherte Wert dazu. Ein Objekt oder eine Liste bis 10 |
+| `elo_map` | Map-Felder eines Objekts (Schlüssel/Wert-Paare neben den Indexfeldern, z. B. aus Formularen), mit `workflow` die Map eines laufenden oder beendeten Vorgangs. `filter` als Schlüssel-Anfang oder Muster mit `*`, höchstens 500 Felder. Werte von Schlüsseln, die auf `_PW` enden oder nach Passwort/Token aussehen, sind maskiert |
+| `elo_feed` | Feed eines Objekts, neueste Einträge zuerst: Kommentare (Erwähnungen als `@Name`), automatische Einträge aus Workflow-Skripten mit Sprachdatei, Schlüssel und Daten, neue Versionen, Anlage. Mit `arten` eingrenzen, höchstens 50 Einträge |
 
 ### Stufe 2: arbeiten (`-Schreiben`)
 
@@ -152,6 +155,8 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_start_workflow` | Workflow aus Vorlage starten, warnt, wenn dieselbe Vorlage schon läuft |
 | `elo_forward_task` | Aufgabe weiterleiten. Bei mehreren Nachfolgern Pflichtangabe. Knoten mit Formular nur mit `trotzFormular`, weil Formularprüfungen über die API nicht laufen |
 | `elo_rename_in_folder` | Ein Wort, z. B. einen falsch geschriebenen Namen, in der Kurzbezeichnung und in benannten Feldern eines Objekts und seiner Unterobjekte ersetzen (Standard zwei Ebenen, höchstens drei und 300 Objekte), dazu im Namen laufender Vorgänge. Nur ganze Wörter (auch mit Umlauten), Referenzen und Dokumentinhalte bleiben unberührt |
+| `elo_map_set` | Map-Felder eines Objekts setzen, Vorschau bisher → neu. Leeren nur ausdrücklich über `leeren`, ein leerer Wert wird abgelehnt. Andere Map-Felder und die Indexfelder bleiben. Lehnt Schlüssel ab, die auf `_PW` enden oder nach Passwort/Token aussehen, ebenso eine andere Groß-/Kleinschreibung eines vorhandenen Schlüssels. Sicherung der alten Werte, zurücklesen. Höchstens 50 Felder je Aufruf |
+| `elo_feed_post` | Kommentar in den Feed eines Objekts schreiben, unter dem angemeldeten Konto. Die Vorschau meldet denselben Text im Feed und Erwähnungen, die eine Benachrichtigung auslösen. Danach zurücklesen. Ändern und Löschen geht nicht |
 
 Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, Datum (31.02. wird abgelehnt), Stichwortliste bei „nur Liste". Datumsfelder schreibt der Server im ELO-Format `JJJJMMTT000000`.
 
@@ -189,10 +194,11 @@ Neu laden (ELOas, IX-Skripte), „Aktualisieren" im Formulardesigner und die Neu
 - **Eigenes Konto:** ELO prüft jeden Zugriff mit den Rechten der angemeldeten Person. Ein zentraler Server bräuchte ein Dienstkonto mit Hauptadministrator-Recht: Die Anmeldung im Namen anderer (`runAsUser`) lehnt der Indexserver für normale Konten ab. Ein solches Konto vermeidet dieser Server bewusst, er läuft lokal mit dem Konto der Person.
 - **Zugangsdaten:** per DPAPI verschlüsselt, nur für euer Windows-Konto lesbar. Der Vorschalt entschlüsselt sie erst beim Java-Start und gibt sie nur an den Java-Prozess weiter.
 - **Zweistufig:** Erster Aufruf = Prüfung + Vorschau + Token. Das Token gilt 5 Minuten, einmal, nur für exakt dieselben Argumente und nur, wenn sich das Objekt seit der Vorschau nicht verändert hat (Fingerabdruck aus Name, Maske, Indexfeldern, Sperre, Version). Die Hinweise an die KI verlangen, die Vorschau zu zeigen und auf Zustimmung zu warten.
-- **Nicht im Code:** Löschen (auch keine Masken, Maskenfelder und Vertretungen), Verschieben, Rechte rekursiv über Unterordner ändern, Benutzerkonten anlegen oder löschen und deren Funktionsrechte, Gruppen oder Passwörter ändern. Rechte an einem einzelnen Eintrag ändert nur `elo_acl_set` (Stufe 3). Das ist nicht abgeschaltet, das gibt es schlicht nicht.
+- **Passwortfelder:** `elo_map` zeigt Werte von Map-Schlüsseln, die auf `_PW` enden oder nach Passwort oder Token aussehen, nur als `***`. `elo_map_set` setzt und leert solche Felder nicht, und die Sicherung enthält nur die geänderten Felder.
+- **Nicht im Code:** Löschen (auch keine Masken, Maskenfelder und Vertretungen), Verschieben, Notizen und Stempel setzen oder entfernen, Feed-Einträge ändern oder löschen, Rechte rekursiv über Unterordner ändern, Benutzerkonten anlegen oder löschen und deren Funktionsrechte, Gruppen oder Passwörter ändern. Rechte an einem einzelnen Eintrag ändert nur `elo_acl_set` (Stufe 3). Das ist nicht abgeschaltet, das gibt es schlicht nicht.
 - **Protokoll:** Jede Ausführung, auch fehlgeschlagene, steht in `%LOCALAPPDATA%\elo-mcp\protokoll-JJJJ-MM.jsonl` (Zeit, Konto, Server, Werkzeug, Argumente, Ergebnis).
 - **Keine Wiederholung beim Schreiben:** Lesewerkzeuge melden sich nach einer abgelaufenen Sitzung einmal neu an. Schreibende nie, damit nichts doppelt passiert.
-- **Fremder Text:** Dokumentinhalte (`elo_get_text`) können Anweisungen an die KI enthalten (Prompt-Injection). Lest deshalb jede Vorschau, bevor ihr zustimmt.
+- **Fremder Text:** Dokumentinhalte (`elo_get_text`), Notizen (`elo_notes`), Feed-Einträge (`elo_feed`) und Map-Werte (`elo_map`) können Anweisungen an die KI enthalten (Prompt-Injection). Lest deshalb jede Vorschau, bevor ihr zustimmt.
 
 ## Start und Speicher
 
@@ -223,6 +229,7 @@ MCP-Clients starten jeden Server einmal je Sitzung. Eine JVM je Sitzung kostet r
 | `src/elo-mcp-benutzer.js` | Benutzerkonten: Windows-Name und Mail lesen, doppelte finden (Stufe 1), setzen (Stufe 3) |
 | `src/elo-mcp-rechte.js` | Objektrechte und Vertretungen lesen und vergleichen (Stufe 1), setzen (Stufe 3) |
 | `src/elo-mcp-vorgaenge.js` | Laufende Vorgänge einer Vorlage (Stufe 1), Knoten, Kanten und Aktivieren an Vorlagen und Vorgängen, Formularseiten (Stufe 3), Wort in einer Akte ersetzen (Stufe 2) |
+| `src/elo-mcp-notizen.js` | Notizen und Stempel lesen, Map-Felder und Feed lesen (Stufe 1), Map-Felder setzen und Feed-Kommentar schreiben (Stufe 2) |
 | `src/elo-mcp-start.js` | Hauptschleife |
 | `test/offline.ps1` | Prüfungen ohne ELO (Protokoll, Stufen, Bauplan, Skripte, Masken) |
 | `test/test-mcp.py` | Aufrufe gegen ein echtes ELO, z. B. `python -I test\test-mcp.py test\beispiel-lesen.json -- -IxUrl <url>` |
