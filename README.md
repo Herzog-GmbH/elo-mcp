@@ -6,7 +6,7 @@
 
 [![Getestet mit ELO 25](https://img.shields.io/badge/getestet%20mit-ELO%2025%20(IX%2025.00)-0067b8)](#voraussetzungen)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![45 Werkzeuge](https://img.shields.io/badge/Werkzeuge-45-2ea44f)](#werkzeuge)
+[![51 Werkzeuge](https://img.shields.io/badge/Werkzeuge-51-2ea44f)](#werkzeuge)
 [![Vorschau und Token](https://img.shields.io/badge/Schreiben-Vorschau%20%2B%20Token-e36209)](#sicherheit)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#voraussetzungen)
@@ -125,7 +125,7 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_search` | iSearch über Titel, Volltext und Indexfelder, optional auf einen Ordner samt Unterordnern begrenzt, höchstens 50 Treffer |
 | `elo_find_by_fields` | Datenbanksuche über Maske und Indexfelder, Platzhalter `*`. Ohne Feld oder Namen abgelehnt |
 | `elo_list` | Ordnerinhalt, eine Ebene, höchstens 300 |
-| `elo_get_object` | Metadaten, Indexfelder mit Bezeichnung, Pfad, aktuelle Version, `elodms://`-Link |
+| `elo_get_object` | Metadaten, Indexfelder mit Bezeichnung, Farbe, Pfad, aktuelle Version, `elodms://`-Link |
 | `elo_get_versions` | Versionsliste, neueste zuerst |
 | `elo_get_text` | Text aus PDF (mit Textebene), DOCX, XLSX, PPTX, XLS, EML und Textdateien, höchstens 50.000 Zeichen je Aufruf, Weiterlesen mit `abZeichen` |
 | `elo_user_rights` | Wirksame Funktionsrechte eines Benutzers mit Herkunft (direkt oder über welche Gruppe, auch verschachtelt) |
@@ -143,6 +143,8 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_notes` | Notizen eines Dokuments oder Ordners: Haftnotizen, Textnotizen, Stempel und andere Anmerkungen mit Art, Seite, Verfasser, Datum und Text. Der Formatvorspann von Text- und Stempelnotizen ist abgetrennt, mit `roh` kommt der gespeicherte Wert dazu. Ein Objekt oder eine Liste bis 10 |
 | `elo_map` | Map-Felder eines Objekts (Schlüssel/Wert-Paare neben den Indexfeldern, z. B. aus Formularen), mit `workflow` die Map eines laufenden oder beendeten Vorgangs. `filter` als Schlüssel-Anfang oder Muster mit `*`, höchstens 500 Felder. Werte von Schlüsseln, die auf `_PW` enden oder nach Passwort/Token aussehen, sind maskiert |
 | `elo_feed` | Feed eines Objekts, neueste Einträge zuerst: Kommentare (Erwähnungen als `@Name`), automatische Einträge aus Workflow-Skripten mit Sprachdatei, Schlüssel und Daten, neue Versionen, Anlage. Mit `arten` eingrenzen, höchstens 50 Einträge |
+| `elo_colors` | Farbliste des Archivs mit ID, Name (`ELO.COLOR.RED`), Anzeigename, Kurzname und RGB; mit `objekt` die Farbe von bis zu 10 Objekten |
+| `elo_function_read` | Lesende registrierte Funktion aufrufen, nur aus einer festen Liste: `RF_sol_common_service_SordProvider` (Objekte zu IDs, höchstens 50, oder Suche über Masken und Felder, höchstens 300 Treffer). Die Antwort kommt als JSON |
 
 ### Stufe 2: arbeiten (`-Schreiben`)
 
@@ -153,10 +155,12 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_new_version` | Neue Version. Lehnt eine identische Datei ab, warnt bei anderer Endung |
 | `elo_set_fields` | Indexfelder und Kurzbezeichnung setzen, Vorschau bisher → neu |
 | `elo_start_workflow` | Workflow aus Vorlage starten, warnt, wenn dieselbe Vorlage schon läuft |
-| `elo_forward_task` | Aufgabe weiterleiten. Bei mehreren Nachfolgern Pflichtangabe. Knoten mit Formular nur mit `trotzFormular`, weil Formularprüfungen über die API nicht laufen |
+| `elo_task_take` | Gruppenaufgabe annehmen wie „Workflow annehmen“ im Client, mit `zurueckgeben` an die Gruppe zurückgeben. Leitet nicht weiter |
+| `elo_forward_task` | Aufgabe weiterleiten. Bei mehreren Nachfolgern Pflichtangabe. Knoten mit Formular nur mit `trotzFormular`, weil Formularprüfungen über die API nicht laufen. `annehmen` nimmt eine Gruppenaufgabe vorher an und gibt sie zurück, wenn das Weiterleiten scheitert |
 | `elo_rename_in_folder` | Ein Wort, z. B. einen falsch geschriebenen Namen, in der Kurzbezeichnung und in benannten Feldern eines Objekts und seiner Unterobjekte ersetzen (Standard zwei Ebenen, höchstens drei und 300 Objekte), dazu im Namen laufender Vorgänge. Nur ganze Wörter (auch mit Umlauten), Referenzen und Dokumentinhalte bleiben unberührt |
-| `elo_map_set` | Map-Felder eines Objekts setzen, Vorschau bisher → neu. Leeren nur ausdrücklich über `leeren`, ein leerer Wert wird abgelehnt. Andere Map-Felder und die Indexfelder bleiben. Lehnt Schlüssel ab, die auf `_PW` enden oder nach Passwort/Token aussehen, ebenso eine andere Groß-/Kleinschreibung eines vorhandenen Schlüssels. Sicherung der alten Werte, zurücklesen. Höchstens 50 Felder je Aufruf |
+| `elo_map_set` | Map-Felder eines Objekts oder (mit `workflow`) eines laufenden Vorgangs setzen, Vorschau bisher → neu. Leeren nur ausdrücklich über `leeren`, ein leerer Wert wird abgelehnt. Andere Map-Felder und die Indexfelder bleiben. Lehnt Schlüssel ab, die auf `_PW` enden oder nach Passwort/Token aussehen, ebenso eine andere Groß-/Kleinschreibung eines vorhandenen Schlüssels. Sicherung der alten Werte, zurücklesen. Höchstens 50 Felder je Aufruf |
 | `elo_feed_post` | Kommentar in den Feed eines Objekts schreiben, unter dem angemeldeten Konto. Die Vorschau meldet denselben Text im Feed und Erwähnungen, die eine Benachrichtigung auslösen. Danach zurücklesen. Ändern und Löschen geht nicht |
+| `elo_color_set` | Farbe eines Objekts setzen, per ID oder Name; mehrdeutige Namen (zwei Farben heißen „Gelb“) werden abgelehnt. Vorschau bisher → neu mit ID und Name, warnt bei laufendem Workflow, Sicherung, zurücklesen |
 
 Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, Datum (31.02. wird abgelehnt), Stichwortliste bei „nur Liste". Datumsfelder schreibt der Server im ELO-Format `JJJJMMTT000000`.
 
@@ -178,6 +182,8 @@ Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, 
 | `elo_workflow_activate` | In einem laufenden Vorgang einen nie betretenen Personenknoten aktivieren, auf Wunsch vorher den hängenden Sammler durchschalten (verlassen, Kante erledigt). Für Vorgänge, in denen ein Knoten nur den ersten Nachfolger angestoßen hat. Skripte am Knoten laufen dabei nicht |
 | `elo_workflow_edges` | Kanten an einer Vorlage oder einem laufenden Vorgang ergänzen oder entfernen. Vorhandene Kanten behalten ihren Erledigt-Stand, erledigte Kanten bleiben, kein Knoten darf ohne Nachfolger zurückbleiben |
 | `elo_form_pages` | Mehrere Seiten eines ELOwf-Formulars in einem Zug aus einem lokalen Verzeichnis (Dateiname = Seite): neue Version oder neu angelegt, unveränderte übersprungen, Zeilenvergleich in der Vorschau. Fehlt das Formular, legt `neuNachVorbild` es wie ein vorhandenes an, samt dessen Referenzen (z. B. gemeinsamer Rahmen). Referenzen werden nie geändert |
+| `elo_form_reload` | Formulardesigner „Aktualisieren“: ELOwf liest die Formulare neu (`edit.jsp?reload=1` mit dem Ticket der Sitzung). Das Ticket geht nur an den Server des Indexservers |
+| `elo_function_call` | Beliebige registrierte Funktion (`RF_…`) aufrufen. Die Vorschau zeigt Funktion und Parameter; was die Funktion tut, prüft der Server nicht |
 
 Die Prüfungen beim Bauen stammen alle aus echten Störungen:
 
@@ -187,7 +193,7 @@ Die Prüfungen beim Bauen stammen alle aus echten Störungen:
 - **Masken:** Felder nur auf Reitern mit Namen (sonst „Index1" im Client), auf Reiter 0 ab Zeile 4 (darüber liegen Kurzbezeichnung und Datum), keine übereinanderliegenden Felder, **Rechte an jeder Zeile** (sonst sehen nur Administratoren den Wert), Eingabefeld nach der Beschriftung, keine Klammern im Anzeigenamen, Zeilen-IDs 50 bis 59 frei. Die Reihenfolge der Zeilen bleibt immer, neue Felder kommen hinten dran. Vorher und nachher eine Sicherung als JSON, nach dem Speichern zurücklesen und vergleichen.
 - **Laufende Vorgänge:** gesperrte Vorgänge werden abgelehnt, und nach einem Fehler wird nur die Sperre gelöst (nie halb geänderte Knoten eingecheckt). Vor jeder Änderung eine Sicherung als JSON (bei Vorlagen zusätzlich `.ewf`), danach zurücklesen. Aktivieren nur für nie betretene Personenknoten, Durchschalten nur für einen aktiven Sammler direkt davor.
 
-Neu laden (ELOas, IX-Skripte), „Aktualisieren" im Formulardesigner und die Neuanmeldung nach einer Maskenänderung bleiben Handarbeit. Das sagt der Server nach jeder Änderung dazu.
+Neu laden (ELOas, IX-Skripte) und die Neuanmeldung nach einer Maskenänderung bleiben Handarbeit, „Aktualisieren" im Formulardesigner geht mit `elo_form_reload`. Das sagt der Server nach jeder Änderung dazu.
 
 ## Sicherheit
 
@@ -198,7 +204,8 @@ Neu laden (ELOas, IX-Skripte), „Aktualisieren" im Formulardesigner und die Neu
 - **Nicht im Code:** Löschen (auch keine Masken, Maskenfelder und Vertretungen), Verschieben, Notizen und Stempel setzen oder entfernen, Feed-Einträge ändern oder löschen, Rechte rekursiv über Unterordner ändern, Benutzerkonten anlegen oder löschen und deren Funktionsrechte, Gruppen oder Passwörter ändern. Rechte an einem einzelnen Eintrag ändert nur `elo_acl_set` (Stufe 3). Das ist nicht abgeschaltet, das gibt es schlicht nicht.
 - **Protokoll:** Jede Ausführung, auch fehlgeschlagene, steht in `%LOCALAPPDATA%\elo-mcp\protokoll-JJJJ-MM.jsonl` (Zeit, Konto, Server, Werkzeug, Argumente, Ergebnis).
 - **Keine Wiederholung beim Schreiben:** Lesewerkzeuge melden sich nach einer abgelaufenen Sitzung einmal neu an. Schreibende nie, damit nichts doppelt passiert.
-- **Fremder Text:** Dokumentinhalte (`elo_get_text`), Notizen (`elo_notes`), Feed-Einträge (`elo_feed`) und Map-Werte (`elo_map`) können Anweisungen an die KI enthalten (Prompt-Injection). Lest deshalb jede Vorschau, bevor ihr zustimmt.
+- **Registrierte Funktionen:** Ohne Freigabe laufen nur die Funktionen aus der festen Liste in `elo_function_read`, mit Grenzen für die Abfrage. Jede andere geht nur über `elo_function_call` (Stufe 3, zweistufig), weil man einer Funktion nicht ansieht, ob sie schreibt.
+- **Fremder Text:** Dokumentinhalte (`elo_get_text`), Notizen (`elo_notes`), Feed-Einträge (`elo_feed`), Map-Werte (`elo_map`) und Antworten registrierter Funktionen können Anweisungen an die KI enthalten (Prompt-Injection). Lest deshalb jede Vorschau, bevor ihr zustimmt.
 
 ## Start und Speicher
 
@@ -229,7 +236,8 @@ MCP-Clients starten jeden Server einmal je Sitzung. Eine JVM je Sitzung kostet r
 | `src/elo-mcp-benutzer.js` | Benutzerkonten: Windows-Name und Mail lesen, doppelte finden (Stufe 1), setzen (Stufe 3) |
 | `src/elo-mcp-rechte.js` | Objektrechte und Vertretungen lesen und vergleichen (Stufe 1), setzen (Stufe 3) |
 | `src/elo-mcp-vorgaenge.js` | Laufende Vorgänge einer Vorlage (Stufe 1), Knoten, Kanten und Aktivieren an Vorlagen und Vorgängen, Formularseiten (Stufe 3), Wort in einer Akte ersetzen (Stufe 2) |
-| `src/elo-mcp-notizen.js` | Notizen und Stempel lesen, Map-Felder und Feed lesen (Stufe 1), Map-Felder setzen und Feed-Kommentar schreiben (Stufe 2) |
+| `src/elo-mcp-notizen.js` | Notizen und Stempel lesen, Map-Felder und Feed lesen (Stufe 1), Map-Felder an Objekt oder Vorgang setzen und Feed-Kommentar schreiben (Stufe 2) |
+| `src/elo-mcp-ergaenzungen.js` | Farben lesen (Stufe 1) und setzen (Stufe 2), lesende registrierte Funktionen (Stufe 1), beliebige registrierte Funktion und Formulardesigner „Aktualisieren“ (Stufe 3) |
 | `src/elo-mcp-start.js` | Hauptschleife |
 | `test/offline.ps1` | Prüfungen ohne ELO (Protokoll, Stufen, Bauplan, Skripte, Masken) |
 | `test/test-mcp.py` | Aufrufe gegen ein echtes ELO, z. B. `python -I test\test-mcp.py test\beispiel-lesen.json -- -IxUrl <url>` |

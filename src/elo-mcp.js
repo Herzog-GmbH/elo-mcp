@@ -17,7 +17,7 @@
  */
 
 var IXC = Packages.de.elo.ix.client;
-var SERVER_NAME = "elo", SERVER_VERSION = "0.11.0";
+var SERVER_NAME = "elo", SERVER_VERSION = "0.12.0";
 var LIMIT = { suche: 50, liste: 300, aufgaben: 50, workflows: 20, aktiveKnoten: 5, textZeichen: 50000, dateiBytes: 20 * 1024 * 1024 };
 
 /* ---------- stdio ---------- */
@@ -406,6 +406,7 @@ tool("elo_get_object", "Metadaten eines Objekts: Name, Maske, Pfad, Eigentuemer,
     var s = sordOf(a.objekt), o = brief(s);
     o.guid = S(s.getGuid()); o.pfad = pathOf(s); o.eigentuemer = S(s.getOwnerName()); o.ablagedatum = S(s.getIDateIso());
     o.zusatztext = S(s.getDesc()).substring(0, 2000); o.link = link(s); o.felder = indexFields(s);
+    try { o.farbe = farbeKurz(s.getKind()); } catch (e) { o.farbe = { id: Number(s.getKind()) }; }
     var lock = S(s.getLockName()); if (lock) o.gesperrtVon = lock;
     if (!isFolder(s)) {
       var v = versionsOf(S(s.getId()));

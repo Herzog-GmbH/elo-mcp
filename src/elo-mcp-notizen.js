@@ -7,7 +7,7 @@
  *                          Art, Seite, Verfasser, Datum, Text ohne den Formatvorspann
  * elo_map (Stufe 1)      - Map-Felder eines Objekts oder eines Vorgangs, optional gefiltert;
  *                          Werte von Schluesseln, die nach Passwort oder Token aussehen, maskiert
- * elo_map_set (Stufe 2)  - Map-Felder eines Objekts setzen oder (nur ausdruecklich) leeren
+ * elo_map_set (Stufe 2)  - Map-Felder eines Objekts oder laufenden Vorgangs setzen oder (nur ausdruecklich) leeren
  *
  * elo_feed (Stufe 1)     - Feed eines Objekts: Kommentare, automatische Eintraege, Versionen
  * elo_feed_post (Stufe 2) - Kommentar in den Feed eines Objekts schreiben
@@ -275,10 +275,10 @@ function mapAenderungen(alt, werte) {
   for (var i = 0; i < werte.length; i++) {
     var w = werte[i], da = hat(alt, w.key), bisher = da ? alt[w.key] : "";
     if (!da && hat(gross, w.key.toUpperCase()))
-      fail("Schluessel '" + w.key + "' gibt es am Objekt als '" + gross[w.key.toUpperCase()] + "' (andere Gross-/Kleinschreibung). Bitte genau so schreiben.");
+      fail("Schluessel '" + w.key + "' gibt es schon als '" + gross[w.key.toUpperCase()] + "' (andere Gross-/Kleinschreibung). Bitte genau so schreiben.");
     fp.push(w.key + "=" + (da ? JSON.stringify(bisher) : "-"));
     if (bisher === w.wert) { warn.push(w.key + ": " + (w.wert === "" ? "ist schon leer" : "hat schon diesen Wert") + ", keine Aenderung."); continue; }
-    if (!da) warn.push(w.key + " gibt es am Objekt noch nicht und wird neu angelegt - Schreibweise pruefen.");
+    if (!da) warn.push(w.key + " gibt es in dieser Map noch nicht und wird neu angelegt - Schreibweise pruefen.");
     schritte.push({ key: w.key, wert: w.wert, da: da, alt: bisher });
   }
   return { schritte: schritte, warn: warn, fp: fp.join("|") };
@@ -291,45 +291,68 @@ function mapVorschau(schritte) {
   return out;
 }
 
-function mapPlan(a) {
-  var werte = mapEingabe(a.felder, a.leeren), s = sordOf(a.objekt), id = S(s.getId());
+/* Wohin geschrieben wird: Map eines Objekts oder (workflow) eines laufenden Vorgangs. checkinMap braucht in beiden
+   Faellen die Objekt-ID; beim Vorgang ist das das Objekt, auf dem er laeuft. */
+function mapZiel(a) {
+  if (trim(a.workflow)) {
+    if (trim(a.objekt)) fail("Entweder objekt oder workflow, nicht beides.");
+    var wid = trim(a.workflow), wf;
+    if (!/^\d+$/.test(wid)) fail("workflow: Workflow-ID als Zahl erwartet.");
+    try { wf = ELO.ix().checkoutWorkFlow(wid, IXC.WFTypeC.ACTIVE, IXC.WFDiagramC.mbLean, IXC.LockC.NO); }
+    catch (e) { if (isSessionError(e)) throw e; fail("Laufender Workflow " + wid + " nicht lesbar: " + errText(e) + ". Die Map beendeter Vorgaenge aendert dieses Werkzeug nicht."); }
+    var sperre = wfSperre(wf), obj = S(wf.getObjId());
+    if (sperre) fail("Workflow " + wid + " ist gesperrt von " + sperre + ".");
+    return { domain: IXC.MapDomainC.DOMAIN_WORKFLOW_ACTIVE, bereich: "wfactive", id: S(wf.getId()), objId: parseInt(obj, 10), name: S(wf.getName()), pfad: "",
+             warn: ["Map eines laufenden Vorgangs: Formulare und Skripte des Workflows lesen und schreiben sie. Ein gerade offenes Formular kann die Werte beim Weiterleiten ueberschreiben."],
+             fp: "wf|" + S(wf.getId()) + "|" + obj + "|" + S(wf.getName()),
+             vorschau: { aktion: "Map-Felder eines Vorgangs setzen", workflow: S(wf.getName()) + " [" + S(wf.getId()) + "]", objekt: obj } };
+  }
+  var s = sordOf(a.objekt), id = S(s.getId());
   if (S(s.getLockName())) fail("Objekt ist gesperrt von " + S(s.getLockName()) + ".");
-  var r = mapAenderungen(mapLesen(IXC.MapDomainC.DOMAIN_SORD, id), werte);
+  return { domain: IXC.MapDomainC.DOMAIN_SORD, bereich: "objekte", id: id, objId: parseInt(id, 10), name: S(s.getName()), pfad: pathOf(s), warn: [],
+           fp: id + "|" + S(s.getName()) + "|" + S(s.getLockId()),
+           vorschau: { aktion: "Map-Felder setzen", objekt: S(s.getName()) + " [" + id + "]", pfad: pathOf(s), maske: S(s.getMaskName()) } };
+}
+
+function mapPlan(a) {
+  var werte = mapEingabe(a.felder, a.leeren), z = mapZiel(a);
+  var r = mapAenderungen(mapLesen(z.domain, z.id), werte);
   if (!r.schritte.length) fail("Keine Aenderung: " + r.warn.join(" "));
-  return { id: id, name: S(s.getName()), pfad: pathOf(s), schritte: r.schritte, warn: r.warn,
-           fp: id + "|" + S(s.getName()) + "|" + S(s.getLockId()) + "|" + r.fp,
-           vorschau: { aktion: "Map-Felder setzen", objekt: S(s.getName()) + " [" + id + "]", pfad: pathOf(s), maske: S(s.getMaskName()), felder: mapVorschau(r.schritte) } };
+  z.vorschau.felder = mapVorschau(r.schritte);
+  return { id: z.id, objId: z.objId, domain: z.domain, bereich: z.bereich, name: z.name, pfad: z.pfad, schritte: r.schritte, warn: z.warn.concat(r.warn),
+           fp: z.fp + "|" + r.fp, vorschau: z.vorschau };
 }
 
 /* werte: {Schluessel: Wert oder null (gab es nicht)} */
 function mapSichern(p, werte, suffix) {
-  var f = new java.io.File(sicherungsOrdner(), "map-" + p.id + "-" + zeitstempel() + suffix + ".json");
+  var f = new java.io.File(sicherungsOrdner(), "map-" + (p.bereich === "wfactive" ? "wf" : "") + p.id + "-" + zeitstempel() + suffix + ".json");
   var w = new java.io.OutputStreamWriter(new java.io.FileOutputStream(f), "UTF-8");
-  try { w.write(JSON.stringify({ id: p.id, name: p.name, pfad: p.pfad, bereich: "objekte", felder: werte }, null, 1)); } finally { w.close(); }
+  try { w.write(JSON.stringify({ id: p.id, name: p.name, pfad: p.pfad, bereich: p.bereich, objekt: S(p.objId), felder: werte }, null, 1)); } finally { w.close(); }
   return S(f.getAbsolutePath());
 }
 
 tool("elo_map_set",
-  "Setzt Map-Felder eines Objekts (zweistufig: Vorschau bisher/neu, dann mit token ausfuehren; Sicherung der alten Werte, danach zuruecklesen). " +
+  "Setzt Map-Felder eines Objekts oder eines laufenden Vorgangs (zweistufig: Vorschau bisher/neu, dann mit token ausfuehren; Sicherung der alten Werte, danach zuruecklesen). " +
   "felder: {\"SCHLUESSEL\": \"Wert\"}. Ein Feld leeren geht nur ausdruecklich ueber leeren=[\"SCHLUESSEL\"], ein leerer Wert in felder wird abgelehnt. " +
   "Andere Map-Felder und die Indexfelder bleiben unberuehrt (Indexfelder: elo_set_fields). Schluessel, die auf _PW enden oder nach Passwort/Token aussehen, werden abgelehnt. " +
-  "Hoechstens " + LIMIT_MAP.setzen + " Felder je Aufruf. Die Map eines Vorgangs aendert dieses Werkzeug nicht.",
+  "Mit workflow statt objekt die Map des laufenden Vorgangs (wie elo_map mit workflow); beendete Vorgaenge nicht. Hoechstens " + LIMIT_MAP.setzen + " Felder je Aufruf.",
   { objekt: P_OBJ,
+    workflow: { type: "string", description: "Statt objekt: Workflow-ID eines laufenden Vorgangs (aus elo_workflows_of_object oder elo_my_tasks); setzt dessen Map" },
     felder: { type: "object", additionalProperties: { type: "string" }, description: "Schluessel -> Wert, z. B. {\"BELEG_STATUS\": \"2\"}. Schluessel genau so schreiben, wie elo_map ihn zeigt" },
     leeren: { type: "array", items: { type: "string" }, description: "Schluessel, deren Wert geleert werden soll" },
     token: P_TOKEN },
-  ["objekt"], function (a) {
+  [], function (a) {
     return zweiSchritte("elo_map_set", a, function () {
       var p = mapPlan(a);
       p.warnungen = p.warn;
       return p;
     }, function (p) {
-      var vorher = {}, i, D = IXC.MapDomainC.DOMAIN_SORD;
+      var vorher = {}, i, D = p.domain;
       for (i = 0; i < p.schritte.length; i++) vorher[p.schritte[i].key] = p.schritte[i].da ? p.schritte[i].alt : null;
       var sicherung = mapSichern(p, vorher, "-vorher");
       var arr = java.lang.reflect.Array.newInstance(IXC.KeyValue, p.schritte.length);
       for (i = 0; i < p.schritte.length; i++) arr[i] = new IXC.KeyValue(p.schritte[i].key, p.schritte[i].wert);
-      ELO.ix().checkinMap(D, p.id, parseInt(p.id, 10), arr, IXC.LockC.NO);
+      ELO.ix().checkinMap(D, p.id, p.objId, arr, IXC.LockC.NO);
       var neu = mapLesen(D, p.id), jetzt = {}, nachher = {}, abw = [];
       for (i = 0; i < p.schritte.length; i++) {
         var k = p.schritte[i].key, ist = hat(neu, k) ? neu[k] : "";
@@ -337,7 +360,8 @@ tool("elo_map_set",
         nachher[k] = hat(neu, k) ? neu[k] : null;
         if (ist !== p.schritte[i].wert) abw.push(k);
       }
-      return { objekt: p.name, id: p.id, felder: jetzt, rueckgelesen: abw.length ? "ABWEICHUNG bei " + abw.join(", ") : "ok, wie geplant",
+      return { bereich: p.bereich === "wfactive" ? "Vorgang" : "Objekt", objekt: p.bereich === "wfactive" ? undefined : p.name,
+               workflow: p.bereich === "wfactive" ? p.name : undefined, id: p.id, felder: jetzt, rueckgelesen: abw.length ? "ABWEICHUNG bei " + abw.join(", ") : "ok, wie geplant",
                sicherungVorher: sicherung, sicherungNachher: mapSichern(p, nachher, "-nachher"),
                hinweis: "Zuruecknehmen: elo_map_set mit den Werten aus der Sicherung vorher (null dort = Feld gab es nicht, also leeren). Ein offenes Formular zeigt neue Werte erst nach dem Neuladen." };
     });

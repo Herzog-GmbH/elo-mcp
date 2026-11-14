@@ -1,6 +1,6 @@
 /*
  * elo-mcp-schreiben.js - Stufe 2 des ELO-MCP-Servers: arbeiten (ablegen, Version,
- * Indexfelder, Workflow starten, Aufgabe weiterleiten). Wird nach elo-mcp.js geladen.
+ * Indexfelder, Workflow starten, Gruppenaufgabe annehmen, Aufgabe weiterleiten). Wird nach elo-mcp.js geladen.
  *
  * Jedes Werkzeug arbeitet zweistufig:
  *   1. Aufruf ohne token  -> Pruefung + Vorschau + token (5 Minuten gueltig, einmal benutzbar)
@@ -377,24 +377,91 @@ function meineIds() {
   return ids;
 }
 
+/* ---------- Gruppenaufgaben annehmen ---------- */
+
+/* Ein aktiver Knoten eines laufenden Vorgangs: { wf, node, byId }. */
+function aktiverKnoten(flowId, nodeId) {
+  if (!/^\d+$/.test(flowId)) fail("workflowId: Zahl erwartet.");
+  if (!/^\d+$/.test(nodeId)) fail("knotenId: Zahl erwartet.");
+  var wf = ELO.ix().checkoutWorkFlow(flowId, IXC.WFTypeC.ACTIVE, IXC.WFDiagramC.mbAll, IXC.LockC.NO);
+  var nodes = wf.getNodes(), node = null, byId = {};
+  for (var i = 0; i < nodes.length; i++) { if (nodes[i].getType() === 0) continue; byId[S(nodes[i].getId())] = nodes[i]; if (S(nodes[i].getId()) === nodeId) node = nodes[i]; }
+  if (!node) fail("Knoten " + nodeId + " gibt es in Workflow " + flowId + " nicht.");
+  if (!S(node.getEnterDateIso()) || S(node.getExitDateIso())) fail("Knoten " + S(node.getName()) + " ist nicht aktiv.");
+  return { wf: wf, node: node, byId: byId };
+}
+
+/* Wem der Knoten gehoert, aus Sicht des angemeldeten Kontos: "ich" (persoenlich oder angenommen),
+   "gruppe" (eine Gruppe, in der ich bin, noch nicht angenommen), "fremd". */
+function knotenBesitz(node, ids) {
+  var uid = S(node.getUserId());
+  if (uid === S(ELO.connect().getLoginResult().getUser().getId())) return "ich";
+  return (ids || meineIds())[uid] ? "gruppe" : "fremd";
+}
+/* Nach dem Annehmen steht die urspruengliche Gruppe in department2 (sonst -1). */
+function knotenGruppeVorher(node) { var d = -1; try { d = Number(node.getDepartment2()); } catch (e) {} return d; }
+
+function annehmenPlan(a) {
+  var flowId = trim(a.workflowId), nodeId = trim(a.knotenId), k = aktiverKnoten(flowId, nodeId), n = k.node, warn = [];
+  var zurueck = a.zurueckgeben === true, besitz = knotenBesitz(n), dep2 = knotenGruppeVorher(n), bei = S(n.getUserName()), danach;
+  if (n.getType() !== IXC.WFNodeC.TYPE_PERSONNODE) fail("Knoten '" + S(n.getName()) + "' ist kein Personenknoten.");
+  if (!zurueck) {
+    if (besitz === "ich") fail(dep2 >= 0 ? "Die Aufgabe hast du schon angenommen. Zurueckgeben: zurueckgeben=true." : "Die Aufgabe ist dir persoenlich zugeordnet; Annehmen ist nicht noetig.");
+    if (besitz === "fremd") fail("Der Knoten ist " + bei + " zugeordnet" + (dep2 >= 0 ? " (hat ihn angenommen)" : "") + ", keiner Gruppe, in der du bist.");
+    danach = S(ELO.connect().getLoginResult().getUser().getName());
+    warn.push("Danach sehen die anderen Mitglieder von " + bei + " die Aufgabe nicht mehr. Zurueckgeben: dasselbe Werkzeug mit zurueckgeben=true.");
+  } else {
+    if (besitz !== "ich" || dep2 < 0) fail("Zurueckgeben geht nur bei einer Gruppenaufgabe, die du angenommen hast. Der Knoten ist " + bei + " zugeordnet.");
+    danach = benutzerName(dep2) || ("Gruppe " + dep2);
+  }
+  if (S(n.getFormSpec())) warn.push("Der Knoten hat das Formular '" + S(n.getFormSpec()) + "'; Annehmen leitet nicht weiter und aendert keine Werte.");
+  return { flowId: parseInt(flowId, 10), nodeId: parseInt(nodeId, 10), zurueck: zurueck, gruppe: dep2, warnungen: warn,
+           fp: flowId + "|" + nodeId + "|" + S(n.getUserId()) + "|" + dep2 + "|" + S(n.getEnterDateIso()) + "|" + S(n.getExitDateIso()),
+           vorschau: { aktion: zurueck ? "Gruppenaufgabe zurueckgeben" : "Gruppenaufgabe annehmen", workflow: S(k.wf.getName()) + " [" + flowId + "]",
+                       objekt: S(k.wf.getObjId()), knoten: S(n.getName()) + " [" + nodeId + "]", jetztBei: bei, danachBei: danach } };
+}
+
+function knotenNehmen(flowId, nodeId, zurueck) {
+  ELO.ix().takeWorkFlowNode(flowId, nodeId, null, zurueck ? IXC.WFTakeNodeC.RESET_DEPARTMENT2 : IXC.WFTakeNodeC.DEFAULT, IXC.LockC.NO);
+}
+
+tool("elo_task_take",
+  "Nimmt eine Gruppenaufgabe an, wie 'Workflow annehmen' im Client (zweistufig): Der Knoten geht vom Gruppenkonto an das angemeldete Konto, " +
+  "die anderen Gruppenmitglieder sehen ihn nicht mehr. Leitet nicht weiter. Mit zurueckgeben=true geht eine angenommene Aufgabe an die Gruppe zurueck. " +
+  "ELO 25 leitet eine Gruppenaufgabe erst nach dem Annehmen weiter; elo_forward_task kann das mit annehmen=true in einem Schritt.",
+  { workflowId: { type: "string" }, knotenId: { type: "string" },
+    zurueckgeben: { type: "boolean", description: "Angenommene Aufgabe an die Gruppe zurueckgeben" }, token: P_TOKEN },
+  ["workflowId", "knotenId"], function (a) {
+    return zweiSchritte("elo_task_take", a, function () { return annehmenPlan(a); }, function (p) {
+      knotenNehmen(p.flowId, p.nodeId, p.zurueck);
+      var n = aktiverKnoten(S(p.flowId), S(p.nodeId)).node, uid = S(n.getUserId());
+      var ok = p.zurueck ? uid === S(p.gruppe) : uid === S(ELO.connect().getLoginResult().getUser().getId());
+      return { workflowId: S(p.flowId), knotenId: S(p.nodeId), jetztBei: S(n.getUserName()),
+               rueckgelesen: ok ? "ok, wie geplant" : "ABWEICHUNG: Knoten ist " + S(n.getUserName()) + " zugeordnet",
+               hinweis: p.zurueck ? "Die Aufgabe steht wieder bei der Gruppe." : "Zurueckgeben: elo_task_take mit zurueckgeben=true." };
+    });
+  }, 2);
+
 tool("elo_forward_task",
-  "Leitet eine Workflow-Aufgabe weiter (zweistufig). Bei mehreren moeglichen Nachfolgern muss nachfolger angegeben werden. Formulare werden dabei NICHT geprueft - bei Knoten mit Formular nur mit trotzFormular=true.",
+  "Leitet eine Workflow-Aufgabe weiter (zweistufig). Bei mehreren moeglichen Nachfolgern muss nachfolger angegeben werden. Formulare werden dabei NICHT geprueft - bei Knoten mit Formular nur mit trotzFormular=true. " +
+  "Gruppenaufgaben nimmt annehmen=true vorher an (ELO 25 leitet sie sonst nicht weiter).",
   { workflowId: { type: "string" }, knotenId: { type: "string" },
     nachfolger: { type: "array", items: { type: "string" }, description: "Knoten-IDs, die aktiviert werden sollen (aus der Vorschau)" },
     kommentar: { type: "string", description: "Optionaler Kommentar am Knoten" },
     trotzFormular: { type: "boolean", description: "Auch weiterleiten, wenn der Knoten ein Formular hat (Formular-Pruefungen entfallen)" },
+    annehmen: { type: "boolean", description: "Gruppenaufgabe vorher annehmen (wie elo_task_take); scheitert das Weiterleiten, geht sie an die Gruppe zurueck" },
     token: P_TOKEN },
   ["workflowId", "knotenId"], function (a) {
     return zweiSchritte("elo_forward_task", a, function () {
       var flowId = trim(a.workflowId), nodeId = trim(a.knotenId), warn = [];
-      var wf = ELO.ix().checkoutWorkFlow(flowId, IXC.WFTypeC.ACTIVE, IXC.WFDiagramC.mbAll, IXC.LockC.NO);
-      var nodes = wf.getNodes(), node = null, byId = {};
-      for (var i = 0; i < nodes.length; i++) { if (nodes[i].getType() === 0) continue; byId[S(nodes[i].getId())] = nodes[i]; if (S(nodes[i].getId()) === nodeId) node = nodes[i]; }
-      if (!node) fail("Knoten " + nodeId + " gibt es in Workflow " + flowId + " nicht.");
-      if (!S(node.getEnterDateIso()) || S(node.getExitDateIso())) fail("Knoten " + S(node.getName()) + " ist nicht aktiv.");
+      var k = aktiverKnoten(flowId, nodeId), wf = k.wf, node = k.node, byId = k.byId, ids = meineIds(), besitz = knotenBesitz(node, ids), nehmen = false;
       if (S(node.getFormSpec()) && !a.trotzFormular) fail("Knoten '" + S(node.getName()) + "' hat das Formular '" + S(node.getFormSpec()) + "'. Beim Weiterleiten ueber die API laufen dessen Pruefungen nicht. Nur mit trotzFormular=true, wenn das gewollt ist.");
       if (S(node.getFormSpec())) warn.push("Formular '" + S(node.getFormSpec()) + "' wird uebergangen.");
-      if (!meineIds()[S(node.getUserId())]) warn.push("Der Knoten ist " + S(node.getUserName()) + " zugeordnet, nicht dir oder einer deiner Gruppen - ELO lehnt das vermutlich ab.");
+      if (besitz === "fremd") warn.push("Der Knoten ist " + S(node.getUserName()) + " zugeordnet, nicht dir oder einer deiner Gruppen - ELO lehnt das vermutlich ab.");
+      if (besitz === "gruppe") {
+        if (a.annehmen === true) { nehmen = true; warn.push("Die Gruppenaufgabe (" + S(node.getUserName()) + ") wird vorher angenommen."); }
+        else warn.push("Gruppenaufgabe von " + S(node.getUserName()) + ", noch nicht angenommen. ELO 25 leitet sie vermutlich erst nach dem Annehmen weiter: annehmen=true.");
+      } else if (a.annehmen === true) warn.push("annehmen entfaellt: Der Knoten ist keine offene Gruppenaufgabe.");
       var as = wf.getMatrix().getAssocs(), moegl = [];
       for (var j = 0; j < as.length; j++) if (S(as[j].getNodeFrom()) === nodeId) moegl.push(S(as[j].getNodeTo()));
       var ziel = a.nachfolger && a.nachfolger.length ? a.nachfolger.map(S) : (moegl.length === 1 ? moegl : null);
@@ -402,12 +469,19 @@ tool("elo_forward_task",
       if (!ziel) fail("Mehrere Nachfolger moeglich, bitte nachfolger angeben: " + JSON.stringify(optionen));
       for (var k = 0; k < ziel.length; k++) if (moegl.indexOf(ziel[k]) < 0) fail("Knoten " + ziel[k] + " ist kein Nachfolger von " + nodeId + ". Moeglich: " + JSON.stringify(optionen));
       var kommentar = trim(a.kommentar);
-      return { vorschau: { aktion: "Aufgabe weiterleiten", workflow: S(wf.getName()) + " [" + flowId + "]", objekt: S(wf.getObjId()), knoten: S(node.getName()) + " [" + nodeId + "]",
-                           bearbeiter: S(node.getUserName()), nachfolger: optionen.filter(function (o) { return ziel.indexOf(o.knotenId) >= 0; }), kommentar: kommentar },
-               warnungen: warn, fp: flowId + "|" + nodeId + "|" + S(node.getEnterDateIso()) + "|" + S(node.getExitDateIso()) + "|" + S(node.getUserId()),
-               flowId: parseInt(flowId, 10), nodeId: parseInt(nodeId, 10), ziel: ziel, kommentar: kommentar };
+      var v = { aktion: "Aufgabe weiterleiten", workflow: S(wf.getName()) + " [" + flowId + "]", objekt: S(wf.getObjId()), knoten: S(node.getName()) + " [" + nodeId + "]",
+                bearbeiter: S(node.getUserName()), nachfolger: optionen.filter(function (o) { return ziel.indexOf(o.knotenId) >= 0; }), kommentar: kommentar };
+      if (nehmen) v.vorherAnnehmen = true;
+      return { vorschau: v, warnungen: warn, fp: flowId + "|" + nodeId + "|" + S(node.getEnterDateIso()) + "|" + S(node.getExitDateIso()) + "|" + S(node.getUserId()) + "|" + nehmen,
+               flowId: parseInt(flowId, 10), nodeId: parseInt(nodeId, 10), ziel: ziel, kommentar: kommentar, nehmen: nehmen };
     }, function (p) {
-      var edit = ELO.ix().beginEditWorkFlowNode(p.flowId, p.nodeId, IXC.LockC.YES);
+      if (p.nehmen) knotenNehmen(p.flowId, p.nodeId, false);
+      var edit;
+      try { edit = ELO.ix().beginEditWorkFlowNode(p.flowId, p.nodeId, IXC.LockC.YES); }
+      catch (e0) {
+        if (p.nehmen) { try { knotenNehmen(p.flowId, p.nodeId, true); } catch (e1) { log("Zurueckgeben fehlgeschlagen: " + e1); } }
+        throw e0;
+      }
       try {
         var fi = new IXC.ForwardWorkflowNodeInfo(), succ = new java.util.ArrayList();
         for (var i = 0; i < p.ziel.length; i++) succ.add(new java.lang.Integer(parseInt(p.ziel[i], 10)));
@@ -416,6 +490,7 @@ tool("elo_forward_task",
         ELO.ix().forwardWorkflowNode(p.flowId, p.nodeId, fi, IXC.LockC.YES);
       } catch (e) {
         try { ELO.ix().endEditWorkFlowNode(p.flowId, p.nodeId, false, true, null, null, null); } catch (e2) { log("Knoten entsperren fehlgeschlagen: " + e2); }
+        if (p.nehmen) { try { knotenNehmen(p.flowId, p.nodeId, true); } catch (e3) { log("Zurueckgeben fehlgeschlagen: " + e3); } }
         throw e;
       }
       var akt = [];

@@ -1,7 +1,7 @@
 /*
  * offline.js - Pruefungen ohne ELO-Verbindung: Protokoll, Stufen, Vorschau und Token,
  * Datumspruefung, Bauplan-, Skript- und Maskenpruefungen. Wird von test\offline.ps1 nach den Quellen geladen
- * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js, elo-mcp-vorgaenge.js, elo-mcp-notizen.js - ohne elo-mcp-start.js).
+ * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js, elo-mcp-vorgaenge.js, elo-mcp-notizen.js, elo-mcp-ergaenzungen.js - ohne elo-mcp-start.js).
  */
 
 var OUT = REAL_OUT, fehlerZahl = 0, okZahl = 0;
@@ -20,7 +20,7 @@ pruefe("initialize: Hinweise nennen die Stufen", init.result.instructions.indexO
 
 var liste = handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }).result.tools, namen = {};
 for (var i = 0; i < liste.length; i++) namen[liste[i].name] = true;
-var erwartet = 22 + (SCHREIBEN_ERLAUBT ? 9 : 0) + (BAUEN_ERLAUBT ? 14 : 0);
+var erwartet = 24 + (SCHREIBEN_ERLAUBT ? 11 : 0) + (BAUEN_ERLAUBT ? 16 : 0);
 pruefe("tools/list: " + erwartet + " Werkzeuge bei Stufen " + stufenText(), liste.length === erwartet, liste.length);
 pruefe("tools/list: Schreibwerkzeug nur mit -Schreiben", !!namen.elo_set_fields === SCHREIBEN_ERLAUBT);
 pruefe("tools/list: Bauwerkzeug nur mit -Bauen", !!namen.elo_workflow_build === BAUEN_ERLAUBT);
@@ -647,6 +647,205 @@ try {
     } finally { protokoll = fdProtEcht; }
   }
 } finally { ELO.ix = mpIxEcht; feedDienst = fdDienstEcht; }
+
+/* ---------- 0.12.0: Farben, Workflow-Map, Gruppenaufgaben, registrierte Funktionen, Formular-Reload (nur im Speicher) ---------- */
+
+pruefe("tools/list: Farben und lesende Funktionen immer", !!namen.elo_colors && !!namen.elo_function_read);
+pruefe("tools/list: Farbe setzen und Annehmen nur mit -Schreiben", !!namen.elo_color_set === SCHREIBEN_ERLAUBT && !!namen.elo_task_take === SCHREIBEN_ERLAUBT);
+pruefe("tools/list: Funktion aufrufen und Formular-Reload nur mit -Bauen", !!namen.elo_function_call === BAUEN_ERLAUBT && !!namen.elo_form_reload === BAUEN_ERLAUBT);
+pruefe("Farbe: COLORREF zu #RRGGBB", farbeHex(3347394) === "#C21333" && farbeHex(12525568) === "#0020BF" && farbeHex(0) === "#000000", farbeHex(3347394));
+var fbCd = new IXC.ColorData(); fbCd.setId(1); fbCd.setName("ELO.COLOR.RED"); fbCd.setDisplayName("Rot"); fbCd.setSpecName("red"); fbCd.setRGB(3347394);
+var fbAus = farbeAus(fbCd);
+pruefe("Farbe: Eintrag der Farbliste", fbAus.id === 1 && fbAus.name === "ELO.COLOR.RED" && fbAus.anzeige === "Rot" && fbAus.kurz === "red" && fbAus.rgb === "#C21333" &&
+       fbAus.ausgeblendet === undefined, JSON.stringify(fbAus));
+var FB_LISTE = [{ id: 0, name: "ELO.COLOR.SYSTEM", anzeige: "Systemfarbe", kurz: "system_colour", rgb: "#000000" },
+                { id: 1, name: "ELO.COLOR.RED", anzeige: "Rot", kurz: "red", rgb: "#C21333" },
+                { id: 7, name: "Gelb", anzeige: "Gelb", kurz: "", rgb: "#FFBF00" },
+                { id: 8, name: "ELO.COLOR.YELLOW", anzeige: "Gelb", kurz: "yellow", rgb: "#FFED47" },
+                { id: 9, name: "Beispielstatus", anzeige: "Beispielstatus", kurz: "", rgb: "#808080", geloescht: true }];
+pruefe("Farbe finden: ID, Name, Kurzname, Anzeigename", farbeFinden("1", FB_LISTE).id === 1 && farbeFinden("ELO.COLOR.RED", FB_LISTE).id === 1 &&
+       farbeFinden("red", FB_LISTE).id === 1 && farbeFinden("rot", FB_LISTE).id === 1 && farbeFinden(8, FB_LISTE).id === 8 && farbeFinden("Yellow", FB_LISTE).id === 8);
+m = fange(function () { farbeFinden("Gelb", FB_LISTE); });
+pruefe("Farbe finden: mehrdeutiger Name abgelehnt, beide genannt", /mehrdeutig/.test(m) && /7 Gelb/.test(m) && /8 ELO.COLOR.YELLOW \(Gelb\)/.test(m), m);
+m = fange(function () { farbeFinden("lila", FB_LISTE); });
+pruefe("Farbe finden: unbekannt, Auswahl genannt", /nicht gefunden/.test(m) && /1 ELO.COLOR.RED \(Rot\)/.test(m) && !/Beispielstatus/.test(m), m);
+pruefe("Farbe finden: unbekannte ID, geloeschte Farbe", /ID 42/.test(fange(function () { farbeFinden("42", FB_LISTE); })) && /geloescht/.test(fange(function () { farbeFinden("9", FB_LISTE); })));
+pruefe("Farbe: Kurzform mit Name und Anzeige", JSON.stringify(farbeKurz(1, FB_LISTE)) === "{\"id\":1,\"name\":\"ELO.COLOR.RED\",\"anzeige\":\"Rot\"}" &&
+       farbeKurz(7, FB_LISTE).anzeige === undefined && /nicht in der Farbliste/.test(farbeKurz(42, FB_LISTE).hinweis), JSON.stringify(farbeKurz(1, FB_LISTE)));
+
+pruefe("Funktion: Name geprueft", RX_RF.test("RF_sol_common_service_SordProvider") && !RX_RF.test("sol.common.Test") && !RX_RF.test("RF_a b") && !RX_RF.test("RF_"));
+var rfSp = RF_LESEND.RF_sol_common_service_SordProvider, rfW = [];
+pruefe("SordProvider: ohne output abgelehnt", /output/.test(fange(function () { rfSp.pruefen({ ids: ["1"] }, []); })));
+pruefe("SordProvider: Suche ohne Maske abgelehnt", /Massenabfrage/.test(fange(function () { rfSp.pruefen({ search: [{ key: "X", value: "1" }], output: [{}] }, []); })));
+pruefe("SordProvider: Maske ohne search abgelehnt", /search/.test(fange(function () { rfSp.pruefen({ masks: ["Beleg"], output: [{}] }, []); })));
+var rfViele = []; for (var rv = 0; rv <= LIMIT_RF.ids; rv++) rfViele.push(String(rv));
+pruefe("SordProvider: Grenze fuer ids", /Hoechstens/.test(fange(function () { rfSp.pruefen({ ids: rfViele, output: [{}] }, []); })));
+var rfSu = rfSp.pruefen({ masks: ["Beleg"], search: [{ key: "BELEG_STATUS", value: "1" }], options: { maxResults: 5000 }, output: [{}] }, rfW);
+var rfSu2 = rfSp.pruefen({ masks: ["Beleg"], search: [{ key: "BELEG_STATUS", value: "1" }], output: [{}] }, rfW);
+pruefe("SordProvider: Treffer begrenzt bzw. vorgegeben", rfSu.options.maxResults === LIMIT_RF.treffer && rfSu2.options.maxResults === LIMIT_RF.standardTreffer && rfW.length === 2, JSON.stringify(rfW));
+var rfLang = ""; while (rfLang.length <= LIMIT_RF.parameter) rfLang += "0123456789";
+pruefe("Funktion: Parameter zu lang abgelehnt", /hoechstens/.test(fange(function () { rfParameterText(rfLang); })) && rfParameterText(undefined) === "" && rfParameterText({ a: 1 }) === "{\"a\":1}");
+
+var fbIxEcht = ELO.ix, fbConnEcht = ELO.connect, fbIdsEcht = meineIds, fbNameEcht = benutzerName, fbCacheEcht = farbenCache, fbProtEcht = protokoll,
+    fbSichEcht = jsonSichern, fbMapSichEcht = mapSichern, fbHttpEcht = httpHolen, fbIxAdrEcht = ixAdresse;
+var fbKind = 1, fbCheckin = null, fbWfs = [], fbGesichert = [], fbLocks = [], fbRf = [], fbHttp = [], fbMap = { objekte: {}, wfactive: { BELEG_RUNDE: "1" } }, fbMapCheckin = null;
+var fbKnoten = new IXC.WFNode(), fbKnoten2 = new IXC.WFNode(), fbNehmen = [], fbEditFehler = false, fbForward = 0;
+fbKnoten.setId(3); fbKnoten.setType(2); fbKnoten.setName("Eingang pruefen"); fbKnoten.setUserId(3); fbKnoten.setUserName("Beispielgruppe"); fbKnoten.setEnterDateIso("20260301120000"); fbKnoten.setDepartment2(-1);
+fbKnoten2.setId(4); fbKnoten2.setType(2); fbKnoten2.setName("Erfassen"); fbKnoten2.setUserId(5); fbKnoten2.setUserName("Muster, Max"); fbKnoten2.setEnterDateIso("20260301120000");
+var fbWf = { getId: function () { return 5005; }, getName: function () { return "Vorgang Beispiel"; }, getObjId: function () { return 4711; }, getLockName: function () { return ""; },
+             getNodes: function () { return [fbKnoten, fbKnoten2]; },
+             getMatrix: function () { return { getAssocs: function () { return [{ getNodeFrom: function () { return 3; }, getNodeTo: function () { return 4; } }]; } }; } };
+function fbAny(text) { var r = new IXC.Any(); r.setType(IXC.AnyC.TYPE_STRING); r.setStringValue(text); return r; }
+ELO.ix = function () {
+  return {
+    checkoutSord: function (id, z, lock) {
+      fbLocks.push(String(lock));
+      var s = new IXC.Sord(); s.setId(4711); s.setName("Testbeleg"); s.setType(254); s.setMaskName("Beleg"); s.setGuid("(G-OBJEKT)"); s.setKind(fbKind);
+      return { getSord: function () { return s; } };
+    },
+    checkinSord: function (s, z, lock) { fbCheckin = { kind: Number(s.getKind()), z: z, lock: String(lock) }; fbKind = Number(s.getKind()); return 4711; },
+    findFirstWorkflows: function () { return { getWorkflows: function () { return fbWfs; }, getSearchId: function () { return "w1"; } }; },
+    findClose: function () {},
+    checkoutWorkFlow: function (id) { if (String(id) !== "5005") throw "[ELOIX:5023]Workflow nicht gefunden"; return fbWf; },
+    checkoutMap: function (domain, id) {
+      var st = fbMap[String(domain)], items = [];
+      for (var k in st) (function (key) { items.push({ getKey: function () { return key; }, getValue: function () { return st[key]; } }); })(k);
+      return { getItems: function () { return items; } };
+    },
+    checkinMap: function (domain, id, objId, arr) {
+      fbMapCheckin = { domain: String(domain), id: String(id), objId: objId };
+      for (var i = 0; i < arr.length; i++) { var k = String(arr[i].getKey()), v = String(arr[i].getValue()); if (v === "") delete fbMap[String(domain)][k]; else fbMap[String(domain)][k] = v; }
+    },
+    takeWorkFlowNode: function (flowId, nodeId, user, flags) {
+      fbNehmen.push(Number(flags));
+      if (Number(flags) === IXC.WFTakeNodeC.RESET_DEPARTMENT2) { fbKnoten.setUserId(fbKnoten.getDepartment2()); fbKnoten.setUserName("Beispielgruppe"); fbKnoten.setDepartment2(-1); }
+      else { fbKnoten.setDepartment2(fbKnoten.getUserId()); fbKnoten.setUserId(75); fbKnoten.setUserName("Test, Konto"); }
+    },
+    beginEditWorkFlowNode: function () { if (fbEditFehler) throw "[ELOIX:2000]Knoten nicht bearbeitbar"; return { getNode: function () { return fbKnoten; } }; },
+    forwardWorkflowNode: function () { fbForward++; },
+    endEditWorkFlowNode: function () {},
+    executeRegisteredFunction: function (name, any) { fbRf.push({ name: String(name), text: String(any.getStringValue()) }); return fbAny("{\"sords\": [{\"id\": \"4711\", \"name\": \"Testbeleg\"}]}"); }
+  };
+};
+ELO.connect = function () {
+  return { getLoginResult: function () { return { getUser: function () { return { getId: function () { return 75; }, getName: function () { return "Test, Konto"; } }; },
+                                                   getClientInfo: function () { return { getTicket: function () { return "TICKET-XYZ"; } }; } }; } };
+};
+meineIds = function () { return { "75": true, "3": true }; };
+benutzerName = function (id) { return String(id) === "3" ? "Beispielgruppe" : ""; };
+farbenCache = FB_LISTE;
+protokoll = function () {};
+jsonSichern = function (name, inhalt) { fbGesichert.push({ name: name, inhalt: inhalt }); return "sicherung-" + name; };
+mapSichern = function (p, werte, suffix) { fbGesichert.push({ name: "map" + suffix, bereich: p.bereich, werte: werte }); return "sicherung-map" + suffix; };
+try {
+  var fbL = mpJson(callTool("elo_colors", {}));
+  pruefe("elo_colors: Farbliste", fbL.farben === 5 && fbL.liste[1].name === "ELO.COLOR.RED" && fbL.objekte === undefined, JSON.stringify(fbL));
+  var fbO = mpJson(callTool("elo_colors", { objekt: "4711", ohneListe: true }));
+  pruefe("elo_colors: Farbe eines Objekts", fbO.objekte[0].farbe.name === "ELO.COLOR.RED" && fbO.objekte[0].farbe.anzeige === "Rot" && fbO.liste === undefined, JSON.stringify(fbO));
+  pruefe("elo_colors: ohneListe nur mit objekt", /nur zusammen mit objekt/.test(mpJson(callTool("elo_colors", { ohneListe: true })).fehler));
+
+  var rfLes = mpJson(callTool("elo_function_read", { funktion: "RF_sol_common_service_SordProvider", parameter: { masks: ["Beleg"], search: [{ key: "BELEG_STATUS", value: "1" }], output: [{ source: { type: "SORD", key: "name" }, target: { prop: "name" } }] } }));
+  pruefe("elo_function_read: Aufruf mit Grenze, Antwort als JSON", rfLes.ergebnis && rfLes.ergebnis.sords[0].id === "4711" && fbRf.length === 1 &&
+         JSON.parse(fbRf[0].text).options.maxResults === LIMIT_RF.standardTreffer && enthaelt(rfLes.hinweise, "maxResults"), JSON.stringify(rfLes));
+  pruefe("elo_function_read: andere Funktion abgelehnt", /nicht in der Liste/.test(mpJson(callTool("elo_function_read", { funktion: "RF_beispiel_Schreiben", parameter: {} })).fehler) && fbRf.length === 1);
+
+  if (SCHREIBEN_ERLAUBT) {
+    var fbV1 = mpJson(callTool("elo_color_set", { objekt: "4711", farbe: "yellow" }));
+    pruefe("elo_color_set: Vorschau mit ID und Name bisher/neu, nichts geschrieben", /^Vorschau/.test(fbV1.modus) && fbCheckin === null && fbV1.vorschau.bisher.id === 1 &&
+           fbV1.vorschau.bisher.name === "ELO.COLOR.RED" && fbV1.vorschau.neu.id === 8 && fbV1.vorschau.neu.anzeige === "Gelb", JSON.stringify(fbV1));
+    var fbA1 = mpJson(callTool("elo_color_set", { objekt: "4711", farbe: "yellow", token: fbV1.token }));
+    pruefe("elo_color_set: nur die Farbe eingecheckt, zurueckgelesen, gesichert", fbA1.modus === "ausgefuehrt" && fbCheckin.kind === 8 && Number(fbCheckin.z.getBset()) === Number(IXC.SordC.mbKind) &&
+           fbA1.ergebnis.rueckgelesen === "ok, wie geplant" && fbGesichert[0].inhalt.farbe.id === 1 && /farbe="1"/.test(fbA1.ergebnis.hinweis), JSON.stringify(fbA1));
+    pruefe("elo_color_set: gleiche Farbe ist keine Aenderung", /Keine Aenderung/.test(mpJson(callTool("elo_color_set", { objekt: "4711", farbe: "8" })).fehler));
+    pruefe("elo_color_set: mehrdeutig abgelehnt", /mehrdeutig/.test(mpJson(callTool("elo_color_set", { objekt: "4711", farbe: "Gelb" })).fehler));
+    fbWfs = [{ getId: function () { return 5005; }, getName: function () { return "Vorgang Beispiel"; } }];
+    var fbV2 = mpJson(callTool("elo_color_set", { objekt: "4711", farbe: 0 }));
+    pruefe("elo_color_set: laufender Workflow wird genannt", enthaelt(fbV2.warnungen, "Workflow 5005") && fbV2.vorschau.neu.name === "ELO.COLOR.SYSTEM", JSON.stringify(fbV2));
+    var fbV3 = mpJson(callTool("elo_color_set", { objekt: "4711", farbe: "red" }));
+    fbKind = 0;
+    pruefe("elo_color_set: Farbe seit der Vorschau geaendert -> abgelehnt", /geaendert/.test(mpJson(callTool("elo_color_set", { objekt: "4711", farbe: "red", token: fbV3.token })).fehler));
+
+    var wmV = mpJson(callTool("elo_map_set", { workflow: "5005", felder: { BELEG_PROBE: "1" } }));
+    pruefe("elo_map_set workflow: Vorschau nennt den Vorgang", /^Vorschau/.test(wmV.modus) && wmV.vorschau.workflow === "Vorgang Beispiel [5005]" && wmV.vorschau.felder[0].neu === "1" &&
+           enthaelt(wmV.warnungen, "laufenden Vorgangs") && fbMapCheckin === null, JSON.stringify(wmV));
+    var wmA = mpJson(callTool("elo_map_set", { workflow: "5005", felder: { BELEG_PROBE: "1" }, token: wmV.token }));
+    pruefe("elo_map_set workflow: in die Map des Vorgangs mit Objekt-ID", wmA.modus === "ausgefuehrt" && fbMapCheckin.domain === "wfactive" && fbMapCheckin.id === "5005" &&
+           fbMapCheckin.objId === 4711 && fbMap.wfactive.BELEG_PROBE === "1" && fbMap.objekte.BELEG_PROBE === undefined && wmA.ergebnis.bereich === "Vorgang" &&
+           wmA.ergebnis.rueckgelesen === "ok, wie geplant", JSON.stringify(wmA));
+    pruefe("elo_map_set workflow: Sicherung im Bereich des Vorgangs", fbGesichert[fbGesichert.length - 2].bereich === "wfactive" && fbGesichert[fbGesichert.length - 2].werte.BELEG_PROBE === null);
+    pruefe("elo_map_set: objekt und workflow zusammen abgelehnt", /nicht beides/.test(mpJson(callTool("elo_map_set", { objekt: "4711", workflow: "5005", felder: { A: "1" } })).fehler));
+    pruefe("elo_map_set: unbekannter Vorgang abgelehnt", /nicht lesbar/.test(mpJson(callTool("elo_map_set", { workflow: "6006", felder: { A: "1" } })).fehler));
+
+    var tkV = mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3" }));
+    pruefe("elo_task_take: Vorschau jetzt/danach, nichts angenommen", /^Vorschau/.test(tkV.modus) && tkV.vorschau.jetztBei === "Beispielgruppe" && tkV.vorschau.danachBei === "Test, Konto" &&
+           fbNehmen.length === 0, JSON.stringify(tkV));
+    var tkA = mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", token: tkV.token }));
+    pruefe("elo_task_take: angenommen und zurueckgelesen", tkA.modus === "ausgefuehrt" && fbNehmen.join() === String(IXC.WFTakeNodeC.DEFAULT) &&
+           tkA.ergebnis.rueckgelesen === "ok, wie geplant" && tkA.ergebnis.jetztBei === "Test, Konto", JSON.stringify(tkA));
+    pruefe("elo_task_take: schon angenommen", /schon angenommen/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3" })).fehler));
+    var tkZ = mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", zurueckgeben: true }));
+    var tkZA = mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", zurueckgeben: true, token: tkZ.token }));
+    pruefe("elo_task_take: zurueckgeben an die Gruppe", tkZ.vorschau.danachBei === "Beispielgruppe" && fbNehmen[1] === IXC.WFTakeNodeC.RESET_DEPARTMENT2 &&
+           tkZA.ergebnis.rueckgelesen === "ok, wie geplant" && fbKnoten.getUserId() === 3, JSON.stringify(tkZA));
+    pruefe("elo_task_take: zurueckgeben ohne Annehmen abgelehnt", /nur bei einer Gruppenaufgabe/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "3", zurueckgeben: true })).fehler));
+    pruefe("elo_task_take: fremder Knoten abgelehnt", /keiner Gruppe/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "4" })).fehler));
+    pruefe("elo_task_take: Knoten-ID muss eine Zahl sein", /Zahl/.test(mpJson(callTool("elo_task_take", { workflowId: "5005", knotenId: "x" })).fehler));
+
+    var fwV0 = mpJson(callTool("elo_forward_task", { workflowId: "5005", knotenId: "3" }));
+    pruefe("elo_forward_task: Hinweis auf offene Gruppenaufgabe", enthaelt(fwV0.warnungen, "annehmen=true") && fwV0.vorschau.vorherAnnehmen === undefined, JSON.stringify(fwV0.warnungen));
+    fbNehmen = []; fbEditFehler = true;
+    var fwV1 = mpJson(callTool("elo_forward_task", { workflowId: "5005", knotenId: "3", annehmen: true }));
+    var fwA1 = mpJson(callTool("elo_forward_task", { workflowId: "5005", knotenId: "3", annehmen: true, token: fwV1.token }));
+    pruefe("elo_forward_task annehmen: scheitert das Weiterleiten, geht die Aufgabe zurueck", fwV1.vorschau.vorherAnnehmen === true && /ELOIX:2000/.test(fwA1.fehler) &&
+           fbNehmen.join() === IXC.WFTakeNodeC.DEFAULT + "," + IXC.WFTakeNodeC.RESET_DEPARTMENT2 && fbKnoten.getUserId() === 3 && fbForward === 0, JSON.stringify(fwA1) + " " + fbNehmen.join());
+    fbNehmen = []; fbEditFehler = false;
+    var fwV2 = mpJson(callTool("elo_forward_task", { workflowId: "5005", knotenId: "3", annehmen: true }));
+    var fwA2 = mpJson(callTool("elo_forward_task", { workflowId: "5005", knotenId: "3", annehmen: true, token: fwV2.token }));
+    pruefe("elo_forward_task annehmen: erst annehmen, dann weiterleiten", fwA2.modus === "ausgefuehrt" && fbNehmen.join() === String(IXC.WFTakeNodeC.DEFAULT) && fbForward === 1, JSON.stringify(fwA2));
+  } else {
+    pruefe("gesperrtes Farbwerkzeug wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_color_set", { objekt: "1", farbe: "1" })).fehler));
+    pruefe("gesperrtes Annehmen wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_task_take", { workflowId: "1", knotenId: "1" })).fehler));
+  }
+
+  if (BAUEN_ERLAUBT) {
+    fbRf = [];
+    var rcV = mpJson(callTool("elo_function_call", { funktion: "RF_beispiel_Schreiben", parameter: { id: "4711", wert: "x" } }));
+    pruefe("elo_function_call: Vorschau zeigt Aufruf und Warnung, ruft nicht auf", /^Vorschau/.test(rcV.modus) && rcV.vorschau.funktion === "RF_beispiel_Schreiben" &&
+           rcV.vorschau.parameter.wert === "x" && enthaelt(rcV.warnungen, "koennen schreiben") && fbRf.length === 0, JSON.stringify(rcV));
+    var rcA = mpJson(callTool("elo_function_call", { funktion: "RF_beispiel_Schreiben", parameter: { id: "4711", wert: "x" }, token: rcV.token }));
+    pruefe("elo_function_call: mit token aufgerufen", rcA.modus === "ausgefuehrt" && fbRf.length === 1 && fbRf[0].text === "{\"id\":\"4711\",\"wert\":\"x\"}" &&
+           rcA.ergebnis.ergebnis.sords.length === 1, JSON.stringify(rcA));
+    pruefe("elo_function_call: ungueltiger Name abgelehnt", /beginnt mit RF_/.test(mpJson(callTool("elo_function_call", { funktion: "sol.beispiel" })).fehler));
+    pruefe("elo_function_call: lesende Funktion bekommt Hinweis", enthaelt(mpJson(callTool("elo_function_call", { funktion: "RF_sol_common_service_SordProvider", parameter: "{}" })).warnungen, "elo_function_read"));
+
+    ixAdresse = function () { return "https://elo.example.com:9093/ix-Archiv/ix"; };
+    pruefe("Formular-Reload: Adresse aus der IX-Adresse", wfBasis("") === "https://elo.example.com:9093/ix-Archiv/plugin/de.elo.ix.plugin.proxy/wf/wf/", wfBasis(""));
+    pruefe("Formular-Reload: eigene Adresse bekommt /", wfBasis("https://elo.example.com:9093/wf-Archiv/wf") === "https://elo.example.com:9093/wf-Archiv/wf/");
+    pruefe("Formular-Reload: anderer Server abgelehnt", /demselben Server/.test(fange(function () { wfBasis("https://andere.example.com/wf/"); })));
+    pruefe("Formular-Reload: Adresse mit ? abgelehnt", /ohne \?/.test(fange(function () { wfBasis("https://elo.example.com:9093/wf/?a=1"); })));
+    ixAdresse = function () { return "https://elo.example.com:9093/ix-Archiv/ixx"; };
+    pruefe("Formular-Reload: ohne /ix am Ende nur mit adresse", /adresse angeben/.test(fange(function () { wfBasis(""); })));
+    ixAdresse = function () { return "https://elo.example.com:9093/ix-Archiv/ix"; };
+    httpHolen = function (url) { fbHttp.push(url); return { code: 200, text: "<html><script>var t='TICKET-XYZ';</script><body>Formulare neu geladen ticket=TICKET-XYZ</body></html>", ziel: "" }; };
+    var frV = mpJson(callTool("elo_form_reload", {}));
+    pruefe("elo_form_reload: Vorschau ruft nichts auf", /^Vorschau/.test(frV.modus) && fbHttp.length === 0 && /edit.jsp\?reload=1$/.test(frV.vorschau.adresse), JSON.stringify(frV));
+    var frRoh = callTool("elo_form_reload", { token: frV.token }), frA = mpJson(frRoh);
+    pruefe("elo_form_reload: Aufruf mit Ticket, Antwort ohne Ticket", frA.modus === "ausgefuehrt" && fbHttp.length === 1 && /reload=1&ticket=TICKET-XYZ$/.test(fbHttp[0]) &&
+           frRoh.content[0].text.indexOf("TICKET-XYZ") < 0 && /Formulare neu geladen/.test(frA.ergebnis.seite), frRoh.content[0].text);
+    httpHolen = function () { return { code: 302, text: "", ziel: "https://elo.example.com:9093/login?ticket=TICKET-XYZ" }; };
+    var frV2 = mpJson(callTool("elo_form_reload", {})), frRoh2 = callTool("elo_form_reload", { token: frV2.token });
+    pruefe("elo_form_reload: Umleitung ist ein Fehler, ohne Ticket", frRoh2.isError && /Anmeldung/.test(frRoh2.content[0].text) && frRoh2.content[0].text.indexOf("TICKET-XYZ") < 0, frRoh2.content[0].text);
+    httpHolen = function (url) { throw new java.io.IOException("Server returned HTTP response code: 500 for URL: " + url); };
+    var frV3 = mpJson(callTool("elo_form_reload", {})), frRoh3 = callTool("elo_form_reload", { token: frV3.token });
+    pruefe("elo_form_reload: Ausnahme ohne Ticket gemeldet", frRoh3.isError && /nicht erreichbar/.test(frRoh3.content[0].text) && frRoh3.content[0].text.indexOf("TICKET-XYZ") < 0, frRoh3.content[0].text);
+  } else {
+    pruefe("gesperrter Funktionsaufruf wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_function_call", { funktion: "RF_x" })).fehler));
+    pruefe("gesperrter Formular-Reload wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_form_reload", {})).fehler));
+  }
+} finally {
+  ELO.ix = fbIxEcht; ELO.connect = fbConnEcht; meineIds = fbIdsEcht; benutzerName = fbNameEcht; farbenCache = fbCacheEcht; protokoll = fbProtEcht;
+  jsonSichern = fbSichEcht; mapSichern = fbMapSichEcht; httpHolen = fbHttpEcht; ixAdresse = fbIxAdrEcht;
+}
 
 OUT.println("");
 OUT.println(okZahl + " ok, " + fehlerZahl + " Fehler");
