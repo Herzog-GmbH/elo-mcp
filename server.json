@@ -8,12 +8,12 @@
     "source": "github"
   },
   "websiteUrl": "https://github.com/Herzog-GmbH/elo-mcp",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "packages": [
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/Herzog-GmbH/elo-mcp/releases/download/v0.12.0/elo-mcp-0.12.0.mcpb",
-      "fileSha256": "17b705323f2d8c7f52ab5298a6adcca41f679c91dfef08c312e8a1d4cdda03dc",
+      "identifier": "https://github.com/Herzog-GmbH/elo-mcp/releases/download/v0.13.0/elo-mcp-0.13.0.mcpb",
+      "fileSha256": "5ba2cf0827ca221c187ed1113cbbf6e1d38289e8bf8185b262e7768a0e3cb4e6",
       "transport": {
         "type": "stdio"
       }
