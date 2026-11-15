@@ -1,5 +1,16 @@
 # Änderungen
 
+## 0.13.0 – 2026-11-15
+
+- **Verweise, Verschieben, Löschen und Wiederherstellen**, fünf neue Werkzeuge in `src/elo-mcp-ablage.js` (jetzt 56). Anlass: das Aufräumen nach dem Umzug von Belegen in Akten (Verweise in Übersichtsordnern, alte Lieferantenverweise, leere Altordner), das bisher nur ein Einmal-Skript konnte:
+  - `elo_references` (Stufe 1): Hauptablage und alle Verweise eines Objekts mit Pfad und Ordner-ID, auch bei gelöschten Objekten (mit Löschzeitpunkt und Konto). Mit `ordner` die Einträge eines Ordners, die dort nur Verweise sind (parentId ungleich dem Ordner), samt Hauptablage.
+  - `elo_reference_set` (Stufe 2): Verweise anlegen (`refSord("", ordner, obj, -1)`) oder entfernen (`deleteSord(ordner, obj)`), als Liste von Objekt und Ordner, höchstens 200. Die Hauptablage wird nie entfernt; doppelte Verweise und Ringe werden abgelehnt. Sicherung der entfernten Verweise, danach zurücklesen.
+  - `elo_move` (Stufe 2): Objekte verschieben (`refSord(alt, neu, obj, -1)`), Standard die Hauptablage, mit `von` (bei einem Objekt) ein bestimmter Ablageort, auch ein Verweis. Lehnt Ringe, fremd gesperrte Objekte und Ziele ab, in denen das Objekt schon liegt. Zurücklesen.
+  - `elo_delete` (Stufe 3): als gelöscht markieren (`DeleteOptions.deleteFinally=false`), nie endgültig. Ohne `mitInhalt` nur Ordner und Ordnerbäume ohne Dokumente und ohne Verweise. Die Vorschau zählt Unterordner, Dokumente und Verweise, warnt vor Verweisen von außerhalb und vor Objekten direkt unter der Wurzel oder unter Administration; Objekte im Baum eines anderen gelisteten Ordners gehen mit ihm. `ueberspringen` lässt Objekte aus, die die Bedingung nicht erfüllen. Sicherung (IDs, GUIDs, Pfade, Inhalt) unter `%LOCALAPPDATA%\elo-mcp\sicherung`, höchstens 200 Objekte und 2000 Einträge in den Bäumen, Pausen zwischen den Ordnern.
+  - `elo_restore` (Stufe 3): `restoreSord` mit `minDeleteDate` = Löschzeitpunkt des Objekts, mit `einzeln` `singleObject`. Die Vorschau zählt über `FindOptions.inclDeleted`, was mitkommt (auch entfernte Verweise) und was gelöscht bleibt. Ein gelöschter Elternordner muss zuerst oder im selben Aufruf zurück; die Reihenfolge stellt das Werkzeug selbst her.
+- Im Testarchiv (IX 25.00) belegt und in [docs/FALLEN.md](docs/FALLEN.md) beschrieben: Löschen markiert den ganzen Baum mit demselben Zeitpunkt (UTC, minutengenau), ein entfernter Verweis ist nur ein als gelöscht markierter Verweis und kommt mit dem Wiederherstellen eines Ordners zurück, wenn er ab dessen Löschzeitpunkt entfernt wurde.
+- Offline-Test um eine Ablage im Speicher erweitert, die sich wie im Testarchiv verhält (258/370/376 Prüfungen). Live in einem Wegwerf-Ordner durchgespielt: Verweis anlegen, verschieben (Hauptablage und Verweis), entfernen, Ordnerbaum löschen, wiederherstellen mit und ohne `einzeln`, Ablehnungen (Ring, Hauptablage, Inhalt, Verweis im Ziel).
+
 ## 0.12.0 – 2026-11-15
 
 - **Farben, Gruppenaufgaben, Map eines Vorgangs, registrierte Funktionen, Formulardesigner**, sechs neue Werkzeuge (jetzt 51). Anlass: Lücken beim Bau eines Rechnungsworkflows, die bisher Einzelskripte oder der Web Client füllen mussten:

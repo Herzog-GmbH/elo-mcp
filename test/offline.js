@@ -1,7 +1,7 @@
 /*
  * offline.js - Pruefungen ohne ELO-Verbindung: Protokoll, Stufen, Vorschau und Token,
  * Datumspruefung, Bauplan-, Skript- und Maskenpruefungen. Wird von test\offline.ps1 nach den Quellen geladen
- * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js, elo-mcp-vorgaenge.js, elo-mcp-notizen.js, elo-mcp-ergaenzungen.js - ohne elo-mcp-start.js).
+ * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js, elo-mcp-vorgaenge.js, elo-mcp-notizen.js, elo-mcp-ergaenzungen.js, elo-mcp-ablage.js - ohne elo-mcp-start.js).
  */
 
 var OUT = REAL_OUT, fehlerZahl = 0, okZahl = 0;
@@ -20,7 +20,7 @@ pruefe("initialize: Hinweise nennen die Stufen", init.result.instructions.indexO
 
 var liste = handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }).result.tools, namen = {};
 for (var i = 0; i < liste.length; i++) namen[liste[i].name] = true;
-var erwartet = 24 + (SCHREIBEN_ERLAUBT ? 11 : 0) + (BAUEN_ERLAUBT ? 16 : 0);
+var erwartet = 25 + (SCHREIBEN_ERLAUBT ? 13 : 0) + (BAUEN_ERLAUBT ? 18 : 0);
 pruefe("tools/list: " + erwartet + " Werkzeuge bei Stufen " + stufenText(), liste.length === erwartet, liste.length);
 pruefe("tools/list: Schreibwerkzeug nur mit -Schreiben", !!namen.elo_set_fields === SCHREIBEN_ERLAUBT);
 pruefe("tools/list: Bauwerkzeug nur mit -Bauen", !!namen.elo_workflow_build === BAUEN_ERLAUBT);
@@ -855,6 +855,222 @@ try {
 } finally {
   ELO.ix = fbIxEcht; ELO.connect = fbConnEcht; meineIds = fbIdsEcht; benutzerName = fbNameEcht; farbenCache = fbCacheEcht; protokoll = fbProtEcht;
   jsonSichern = fbSichEcht; mapSichern = fbMapSichEcht; httpHolen = fbHttpEcht; ixAdresse = fbIxAdrEcht;
+}
+
+/* ---------- 0.13.0: Verweise, Verschieben, Loeschen, Wiederherstellen (nur im Speicher, erfundene Ablage) ---------- */
+
+pruefe("tools/list: Verweise lesen immer", !!namen.elo_references);
+pruefe("tools/list: Verweis setzen und Verschieben nur mit -Schreiben", !!namen.elo_reference_set === SCHREIBEN_ERLAUBT && !!namen.elo_move === SCHREIBEN_ERLAUBT);
+pruefe("tools/list: Loeschen und Wiederherstellen nur mit -Bauen", !!namen.elo_delete === BAUEN_ERLAUBT && !!namen.elo_restore === BAUEN_ERLAUBT);
+
+/* Ablage: Akten [10] mit Akte A [11] (Dokument Vertrag Muster [20], Verweis davon in Ablage B [14]), Leer [12] mit Unterordner leer [13],
+   Ablage B [14] mit Rechnung [21], Mit Verweis [15] (nur ein Verweis auf [21]), Baum [16] mit Ast [17].
+   Wie im Testarchiv beobachtet: Loeschen markiert den ganzen Baum mit demselben Zeitpunkt, ein entfernter Verweis bleibt als
+   geloeschter Verweis mit eigenem Zeitpunkt stehen, restoreSord mit minDeleteDate holt alles ab diesem Zeitpunkt zurueck. */
+var AB, abAufrufe, abUhr;
+function abNeu() {
+  abAufrufe = []; abUhr = "20261115120000";
+  AB = { "1": { name: "Wurzel", typ: 1, eltern: "0", verweise: [] }, "10": { name: "Akten", typ: 1, eltern: "1", verweise: [] },
+         "11": { name: "Akte A", typ: 1, eltern: "10", verweise: [] }, "12": { name: "Leer", typ: 1, eltern: "10", verweise: [] },
+         "13": { name: "Unterordner leer", typ: 1, eltern: "12", verweise: [] }, "14": { name: "Ablage B", typ: 1, eltern: "10", verweise: [] },
+         "15": { name: "Mit Verweis", typ: 1, eltern: "10", verweise: [] }, "16": { name: "Baum", typ: 1, eltern: "10", verweise: [] },
+         "17": { name: "Ast", typ: 1, eltern: "16", verweise: [] },
+         "20": { name: "Vertrag Muster", typ: 254, eltern: "11", verweise: ["14"] }, "21": { name: "Rechnung", typ: 254, eltern: "14", verweise: ["15"] } };
+}
+function abKette(f) {
+  var k = [];
+  while (f && f !== "1" && f !== "0") { var n = new IXC.IdName(); n.setId(parseInt(f, 10)); n.setName(AB[f].name); k.unshift(n); f = AB[f].eltern; }
+  return k;
+}
+function abSord(id, verweisWeg) {
+  var o = AB[id], s = new IXC.Sord(), aps = [], orte = [o.eltern].concat(o.verweise);
+  s.setId(parseInt(id, 10)); s.setName(o.name); s.setType(o.typ); s.setParentId(parseInt(o.eltern, 10)); s.setGuid("(G-" + id + ")"); s.setMaskName("Basis");
+  s.setDeleted(!!o.geloescht); s.setLockId(o.sperre || -1); s.setLockName(o.sperre ? "Muster, Max" : ""); s.setLockIdDoc(-1);
+  if (o.geloescht) { s.setDeleteDateIso(o.geloescht); s.setDeleteUser(5); }
+  for (var i = 0; i < orte.length; i++) { if (orte[i] === "0") continue; var ap = new IXC.ArcPath(); ap.setPath(jarr("IdName", abKette(orte[i]))); aps.push(ap); }
+  s.setRefPaths(jarr("ArcPath", aps));
+  if (verweisWeg) { s.setDeleted(true); s.setDeleteDateIso(verweisWeg); s.setDeleteUser(5); }
+  return s;
+}
+function abWeg(o, f) { for (var i = 0; o.verweiseWeg && i < o.verweiseWeg.length; i++) if (o.verweiseWeg[i].ordner === f) return o.verweiseWeg[i].am; return ""; }
+function abHier(f, mitGeloeschten) {
+  var r = [];
+  for (var id in AB) {
+    var o = AB[id];
+    if (o.eltern === f || o.verweise.indexOf(f) >= 0) { if (!o.geloescht || mitGeloeschten) r.push(abSord(id)); }
+    else if (mitGeloeschten && abWeg(o, f)) r.push(abSord(id, abWeg(o, f)));
+  }
+  return r;
+}
+function abMarkieren(id, am) { AB[id].geloescht = am; for (var k in AB) if (AB[k].eltern === id && !AB[k].geloescht) abMarkieren(k, am); }
+function abZurueck(id, ab) {
+  delete AB[id].geloescht;
+  for (var k in AB) {
+    var o = AB[k];
+    if (o.eltern === id && o.geloescht && o.geloescht >= ab) abZurueck(k, ab);
+    var w = abWeg(o, id);
+    if (w && w >= ab) { o.verweise.push(id); o.verweiseWeg = o.verweiseWeg.filter(function (x) { return x.ordner !== id; }); }
+  }
+}
+var abIxEcht = ELO.ix, abConnEcht = ELO.connect, abNameEcht = benutzerName, abProtEcht = protokoll, abSichEcht = jsonSichern, abWarteEcht = warte, abGesichert = [];
+ELO.ix = function () {
+  return {
+    checkoutSord: function (id) { id = String(id); if (!AB[id]) throw "[ELOIX:5023]nicht gefunden " + id; return { getSord: function () { return abSord(id); } }; },
+    findFirstSords: function (fi) {
+      var fc = fi.getFindChildren(), fo = fi.getFindOptions(), r = fc ? abHier(String(fc.getParentId()), !!(fo && fo.isInclDeleted())) : [];
+      return { getSords: function () { return r; }, isMoreResults: function () { return false; }, getSearchId: function () { return "s1"; } };
+    },
+    findClose: function () {},
+    refSord: function (alt, neu, id) {
+      alt = String(alt); neu = String(neu); id = String(id); abAufrufe.push("ref " + alt + ">" + neu + " " + id);
+      var o = AB[id];
+      if (alt === "") o.verweise.push(neu); else if (alt === o.eltern) o.eltern = neu; else o.verweise[o.verweise.indexOf(alt)] = neu;
+    },
+    deleteSord: function (eltern, id, lock, opt) {
+      eltern = String(eltern); id = String(id);
+      abAufrufe.push("del " + eltern + " " + id + (opt ? (opt.isDeleteFinally() ? " endgueltig" : " markieren") : ""));
+      var o = AB[id];
+      if (eltern === o.eltern) abMarkieren(id, abUhr);
+      else { o.verweise.splice(o.verweise.indexOf(eltern), 1); (o.verweiseWeg = o.verweiseWeg || []).push({ ordner: eltern, am: abUhr }); }
+    },
+    restoreSord: function (id, ro) {
+      id = String(id); abAufrufe.push("restore " + id + (ro.isSingleObject() ? " einzeln" : " ab " + ro.getMinDeleteDate()));
+      if (!AB[id].geloescht) throw "[ELOIX:2000]nicht geloescht " + id;
+      if (ro.isSingleObject()) delete AB[id].geloescht; else abZurueck(id, String(ro.getMinDeleteDate()));
+    }
+  };
+};
+ELO.connect = function () { return { getLoginResult: function () { return { getUser: function () { return { getId: function () { return 75; }, getName: function () { return "Test, Konto"; } }; } }; } }; };
+benutzerName = function (id) { return String(id) === "5" ? "Muster, Max" : ""; };
+protokoll = function () {};
+jsonSichern = function (name, inhalt) { abGesichert.push({ name: name, inhalt: inhalt }); return "sicherung-" + name; };
+warte = function () {};
+function abZwei(name, args) {
+  var v = mpJson(callTool(name, args));
+  if (v.fehler) return { vorschau: v, ergebnis: v };
+  var vorAufrufe = abAufrufe.length, a2 = {};
+  for (var k in args) a2[k] = args[k];
+  a2.token = v.token;
+  return { vorschau: v, aufrufeInVorschau: vorAufrufe, ergebnis: mpJson(callTool(name, a2)) };
+}
+try {
+  abNeu();
+  var abR = mpJson(callTool("elo_references", { objekt: "20" }));
+  pruefe("elo_references: Hauptablage und Verweis", abR.hauptablage.ordner === "11" && abR.hauptablage.pfad === "Akten/Akte A" && abR.anzahlVerweise === 1 &&
+         abR.verweise[0].ordner === "14" && abR.verweise[0].pfad === "Akten/Ablage B" && abR.geloescht === undefined, JSON.stringify(abR));
+  var abO = mpJson(callTool("elo_references", { ordner: "14" }));
+  pruefe("elo_references: Verweise in einem Ordner", abO.eintraege === 2 && abO.hierAbgelegt === 1 && abO.anzahlVerweise === 1 && abO.verweise[0].id === "20" &&
+         abO.verweise[0].hauptablage.ordner === "11", JSON.stringify(abO));
+  pruefe("elo_references: objekt oder ordner", /Entweder/.test(mpJson(callTool("elo_references", {})).fehler) && /Entweder/.test(mpJson(callTool("elo_references", { objekt: "20", ordner: "14" })).fehler));
+  AB["21"].geloescht = "20261101080000";
+  var abG = mpJson(callTool("elo_references", { objekt: "21" }));
+  pruefe("elo_references: geloeschtes Objekt mit Datum und Konto", abG.geloescht === true && abG.geloeschtAm === "01.11.2026 08:00 UTC" && abG.geloeschtVon === "Muster, Max", JSON.stringify(abG));
+  delete AB["21"].geloescht;
+
+  if (SCHREIBEN_ERLAUBT) {
+    var abV1 = abZwei("elo_reference_set", { aktion: "anlegen", verweise: [{ objekt: "21", ordner: "11" }] });
+    pruefe("elo_reference_set anlegen: Vorschau ruft nichts auf, dann refSord mit leerem alten Ordner", abV1.aufrufeInVorschau === 0 && abV1.vorschau.vorschau.anzahl === 1 &&
+           abV1.ergebnis.ergebnis.erledigt === 1 && abAufrufe.join() === "ref >11 21" && AB["21"].verweise.indexOf("11") >= 0, JSON.stringify(abV1) + " " + abAufrufe.join());
+    pruefe("elo_reference_set: Verweis gibt es schon", /schon einen Verweis/.test(mpJson(callTool("elo_reference_set", { aktion: "anlegen", verweise: [{ objekt: "21", ordner: "11" }] })).fehler));
+    pruefe("elo_reference_set: Verweis in der Hauptablage abgelehnt", /schon in der Hauptablage/.test(mpJson(callTool("elo_reference_set", { aktion: "anlegen", verweise: [{ objekt: "21", ordner: "14" }] })).fehler));
+    pruefe("elo_reference_set: Ordner als Verweis in sich selbst abgelehnt", /Ring/.test(mpJson(callTool("elo_reference_set", { aktion: "anlegen", verweise: [{ objekt: "10", ordner: "13" }] })).fehler));
+    pruefe("elo_reference_set: Hauptablage wird nie entfernt", /kein Verweis/.test(mpJson(callTool("elo_reference_set", { aktion: "entfernen", verweise: [{ objekt: "20", ordner: "11" }] })).fehler));
+    pruefe("elo_reference_set: kein Verweis im Ordner", /keinen Verweis/.test(mpJson(callTool("elo_reference_set", { aktion: "entfernen", verweise: [{ objekt: "20", ordner: "12" }] })).fehler));
+    pruefe("elo_reference_set: Ziel muss Ordner sein", /Kein Ordner/.test(mpJson(callTool("elo_reference_set", { aktion: "anlegen", verweise: [{ objekt: "21", ordner: "20" }] })).fehler));
+    abAufrufe = []; abGesichert = [];
+    var abV2 = abZwei("elo_reference_set", { aktion: "entfernen", verweise: [{ objekt: "20", ordner: "14" }, { objekt: "20", ordner: "14" }] });
+    pruefe("elo_reference_set entfernen: doppelte Angabe einmal, deleteSord im Verweisordner, Sicherung, Objekt bleibt",
+           abV2.vorschau.vorschau.anzahl === 1 && abAufrufe.join() === "del 14 20" && abGesichert.length === 1 && abGesichert[0].inhalt.verweise[0].ordner === "14" &&
+           !AB["20"].geloescht && AB["20"].verweise.length === 0 && abV2.ergebnis.ergebnis.erledigt === 1, JSON.stringify(abV2.ergebnis) + " " + abAufrufe.join());
+
+    abAufrufe = [];
+    var abM1 = abZwei("elo_move", { objekte: ["21"], ziel: "12" });
+    pruefe("elo_move: Hauptablage verschieben", abM1.aufrufeInVorschau === 0 && abM1.vorschau.vorschau.objekte[0].von === "Akten/Ablage B [14]" &&
+           abM1.vorschau.vorschau.objekte[0].was === "Hauptablage" && abAufrufe.join() === "ref 14>12 21" && AB["21"].eltern === "12" && abM1.ergebnis.ergebnis.verschoben === 1,
+           JSON.stringify(abM1) + " " + abAufrufe.join());
+    pruefe("elo_move: liegt schon im Ziel", /liegt schon/.test(mpJson(callTool("elo_move", { objekte: ["21"], ziel: "12" })).fehler));
+    pruefe("elo_move: Verweis im Ziel", /schon einen Verweis/.test(mpJson(callTool("elo_move", { objekte: ["21"], ziel: "11" })).fehler));
+    pruefe("elo_move: Ordner in den eigenen Baum abgelehnt", /Ring/.test(mpJson(callTool("elo_move", { objekte: ["10"], ziel: "13" })).fehler) &&
+           /Ring/.test(mpJson(callTool("elo_move", { objekte: ["12"], ziel: "12" })).fehler));
+    pruefe("elo_move: von nur bei einem Objekt", /nur mit einem Objekt/.test(mpJson(callTool("elo_move", { objekte: ["20", "21"], ziel: "16", von: "11" })).fehler));
+    pruefe("elo_move: von muss ein Ablageort sein", /liegt nicht in Ordner 17/.test(mpJson(callTool("elo_move", { objekte: ["21"], ziel: "16", von: "17" })).fehler));
+    abAufrufe = [];
+    var abM2 = abZwei("elo_move", { objekte: ["21"], ziel: "16", von: "11" });
+    pruefe("elo_move: Verweis verschieben, Hauptablage bleibt", abM2.vorschau.vorschau.objekte[0].was === "Verweis" && abAufrufe.join() === "ref 11>16 21" &&
+           AB["21"].eltern === "12" && AB["21"].verweise.indexOf("16") >= 0 && AB["21"].verweise.indexOf("11") < 0 && abM2.ergebnis.ergebnis.verschoben === 1, JSON.stringify(abM2.ergebnis));
+    AB["20"].sperre = 5;
+    pruefe("elo_move: fremd gesperrt abgelehnt", /gesperrt von Muster, Max/.test(mpJson(callTool("elo_move", { objekte: ["20"], ziel: "12" })).fehler));
+    AB["20"].sperre = 75;
+    pruefe("elo_move: eigene Sperre stoert nicht", /^Vorschau/.test(mpJson(callTool("elo_move", { objekte: ["20"], ziel: "12" })).modus));
+    delete AB["20"].sperre;
+    var abZu = []; for (var az = 0; az <= LIMIT_ABLAGE.objekte; az++) abZu.push(String(az + 1000));
+    pruefe("elo_move: Obergrenze Objekte", /Hoechstens/.test(mpJson(callTool("elo_move", { objekte: abZu, ziel: "12" })).fehler));
+  } else {
+    pruefe("gesperrtes Verschieben wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_move", { objekte: ["21"], ziel: "12" })).fehler));
+  }
+
+  if (BAUEN_ERLAUBT) {
+    abNeu(); abGesichert = [];
+    var abL1 = abZwei("elo_delete", { objekte: ["12"] });
+    pruefe("elo_delete: leerer Ordnerbaum, Vorschau zaehlt, nur markieren, Sicherung vorher", abL1.aufrufeInVorschau === 0 && abL1.vorschau.vorschau.summe.unterordner === 1 &&
+           abL1.vorschau.vorschau.summe.dokumente === 0 && abAufrufe.join() === "del 10 12 markieren" && AB["12"].geloescht && abGesichert.length === 1 &&
+           abGesichert[0].inhalt.objekte[0].eltern === "10" && abL1.ergebnis.ergebnis.geloescht === 1, JSON.stringify(abL1) + " " + abAufrufe.join());
+    pruefe("elo_delete: schon geloescht", /schon geloescht/.test(mpJson(callTool("elo_delete", { objekte: ["12"] })).fehler));
+    pruefe("elo_delete: Ordner mit Dokument nur mit mitInhalt", /1 Dokumente darin: Vertrag Muster \[20\]/.test(mpJson(callTool("elo_delete", { objekte: ["11"] })).fehler));
+    pruefe("elo_delete: Ordner mit Verweis nur mit mitInhalt", /1 Verweise darin: Rechnung \[21\] in 15/.test(mpJson(callTool("elo_delete", { objekte: ["15"] })).fehler));
+    pruefe("elo_delete: Dokument nur mit mitInhalt", /ist ein Dokument/.test(mpJson(callTool("elo_delete", { objekte: ["21"] })).fehler));
+    pruefe("elo_delete: Archivwurzel nie", /Archivwurzel/.test(mpJson(callTool("elo_delete", { objekte: ["1"] })).fehler));
+    var abL2 = mpJson(callTool("elo_delete", { objekte: ["11", "16", "17"], ueberspringen: true }));
+    pruefe("elo_delete: ueberspringen laesst aus, Ast geht mit dem Baum", abL2.vorschau.anzahl === 1 && abL2.vorschau.objekte[0].objekt === "Baum [16]" &&
+           abL2.vorschau.ausgelassen.length === 1 && /Akte A/.test(abL2.vorschau.ausgelassen[0].objekt) && abL2.vorschau.gehenMit.length === 1, JSON.stringify(abL2));
+    var abL3 = mpJson(callTool("elo_delete", { objekte: ["11"], mitInhalt: true }));
+    pruefe("elo_delete mitInhalt: zaehlt Dokument, warnt vor Verweis von ausserhalb", abL3.vorschau.summe.dokumente === 1 && enthaelt(abL3.warnungen, "Verweise ausserhalb") &&
+           enthaelt(abL3.warnungen, "Ablage B [14]"), JSON.stringify(abL3));
+    var abL4 = mpJson(callTool("elo_delete", { objekte: ["21"], mitInhalt: true }));
+    pruefe("elo_delete mitInhalt: Dokument mit Verweis gewarnt", abL4.vorschau.summe.dokumente === 1 && enthaelt(abL4.warnungen, "hat 1 Verweise"), JSON.stringify(abL4));
+    AB["17"].sperre = 5;
+    pruefe("elo_delete: gesperrter Eintrag im Baum", /gesperrt: Ast \[17\] von Muster, Max/.test(mpJson(callTool("elo_delete", { objekte: ["16"] })).fehler));
+    delete AB["17"].sperre;
+
+    abAufrufe = [];
+    var abW1 = abZwei("elo_restore", { objekte: ["12"] });
+    pruefe("elo_restore: Vorschau nennt Datum, Konto und Inhalt, dann restoreSord ab Loeschdatum", abW1.aufrufeInVorschau === 0 && abW1.vorschau.vorschau.objekte[0].geloeschtVon === "Muster, Max" &&
+           abW1.vorschau.vorschau.objekte[0].geloeschtAm === "15.11.2026 12:00 UTC" && abW1.vorschau.vorschau.objekte[0].mitZurueck.unterordner === 1 &&
+           abAufrufe.join() === "restore 12 ab 20261115120000" && !AB["12"].geloescht && !AB["13"].geloescht &&
+           abW1.ergebnis.ergebnis.wiederhergestellt === 1, JSON.stringify(abW1) + " " + abAufrufe.join());
+    pruefe("elo_restore: nicht geloescht", /nicht geloescht/.test(mpJson(callTool("elo_restore", { objekte: ["12"] })).fehler));
+    AB["16"].geloescht = "20261115130000"; AB["17"].geloescht = "20261115130000";
+    pruefe("elo_restore: geloeschter Elternordner blockiert", /Elternordner Baum \[16\] ist selbst geloescht/.test(mpJson(callTool("elo_restore", { objekte: ["17"] })).fehler));
+    abAufrufe = [];
+    var abW2 = abZwei("elo_restore", { objekte: ["17", "16"], einzeln: true });
+    pruefe("elo_restore: Elternordner zuerst, einzeln", abAufrufe.join() === "restore 16 einzeln,restore 17 einzeln" && abW2.ergebnis.ergebnis.wiederhergestellt === 2 &&
+           abW2.vorschau.vorschau.objekte[0].bleibenGeloescht === 1 && enthaelt(abW2.vorschau.warnungen, "bleibt geloescht"), abAufrufe.join() + " " + JSON.stringify(abW2.vorschau));
+    abMarkieren("16", "20261115130000"); abAufrufe = [];
+    var abW3 = abZwei("elo_restore", { objekte: ["17", "16"] });
+    pruefe("elo_restore: Inhalt kommt mit dem Elternordner, kein zweiter Aufruf", abAufrufe.join() === "restore 16 ab 20261115130000" &&
+           abW3.ergebnis.ergebnis.wiederhergestellt === 1 && abW3.ergebnis.ergebnis.mitElternordner[0] === "17" && !AB["17"].geloescht, abAufrufe.join() + " " + JSON.stringify(abW3.ergebnis));
+
+    /* Verweis entfernt, Ordner spaeter geloescht: der Verweis bleibt beim Wiederherstellen weg. */
+    abNeu(); abUhr = "20261115100000";
+    abZwei("elo_reference_set", { aktion: "entfernen", verweise: [{ objekt: "21", ordner: "15" }] });
+    abUhr = "20261115110000";
+    abZwei("elo_delete", { objekte: ["15"] });
+    var abW4 = abZwei("elo_restore", { objekte: ["15"] });
+    pruefe("elo_restore: frueher entfernter Verweis bleibt weg", abW4.vorschau.vorschau.objekte[0].mitZurueck.verweise === 0 && abW4.vorschau.vorschau.objekte[0].bleibenGeloescht === 1 &&
+           !AB["15"].geloescht && AB["21"].verweise.indexOf("15") < 0 && !enthaelt(abW4.vorschau.warnungen, "kommen mit zurueck"), JSON.stringify(abW4.vorschau));
+    /* Verweis in derselben Minute entfernt wie der Ordner geloescht: er kommt mit zurueck, die Vorschau sagt es. */
+    abNeu();
+    abZwei("elo_reference_set", { aktion: "entfernen", verweise: [{ objekt: "21", ordner: "15" }] });
+    abZwei("elo_delete", { objekte: ["15"] });
+    var abW5 = abZwei("elo_restore", { objekte: ["15"] });
+    pruefe("elo_restore: Verweis aus derselben Minute kommt mit und wird gewarnt", abW5.vorschau.vorschau.objekte[0].mitZurueck.verweise === 1 &&
+           enthaelt(abW5.vorschau.warnungen, "kommen mit zurueck: Rechnung [21] in 15") && AB["21"].verweise.indexOf("15") >= 0, JSON.stringify(abW5.vorschau));
+  } else {
+    pruefe("gesperrtes Loeschen wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_delete", { objekte: ["12"] })).fehler));
+    pruefe("gesperrtes Wiederherstellen wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_restore", { objekte: ["12"] })).fehler));
+  }
+} finally {
+  ELO.ix = abIxEcht; ELO.connect = abConnEcht; benutzerName = abNameEcht; protokoll = abProtEcht; jsonSichern = abSichEcht; warte = abWarteEcht;
 }
 
 OUT.println("");

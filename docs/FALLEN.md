@@ -95,6 +95,16 @@ Was uns beim Bau dieses Servers begegnet ist, geprüft gegen einen Indexserver 2
 | Ohne Flag `FLAG_ONE_SUCCESSOR` (1) zeigt ELOwf bei mehreren Nachfolgern Checkboxen und einen allgemeinen Knopf statt je einem beschrifteten Knopf. | Flag 1 an Personenknoten mit mehreren Nachfolgern setzen. |
 | Eine Formularseite, die als Referenz in einem Formularordner liegt (z. B. ein gemeinsamer Rahmen), gehört einem anderen Formular. | Referenzen nie über das eine Formular ändern. Beim Löschen eines Formularordners erst die Referenz lösen (`deleteSord(<Ordner>, <Referenz>)`), sonst trifft es das Original. |
 
+## Ablage: Verweise, Verschieben, Löschen
+
+| Falle | Was stattdessen |
+|---|---|
+| Ein Ordner listet Hauptablage und Verweise gemischt als Kinder. | Verweis = Kind, dessen `parentId` nicht der Ordner ist. Die Ablageorte stehen in `refPaths`, je Ort der Pfad bis zum Ordner; der mit `parentId` am Ende ist die Hauptablage. `findFirstSords` mit `SordC.mbAll` liefert `refPaths` mit. |
+| `deleteSord(ordner, obj)` macht je nach Ordner etwas anderes: im Verweisordner entfernt es den Verweis, in der Hauptablage markiert es das Objekt als gelöscht. | Vorher prüfen, ob der Ordner Hauptablage oder Verweisordner ist (`elo_references`). |
+| Löschen eines Ordners markiert jeden Eintrag darin mit demselben Zeitpunkt (`deleteDateIso`, UTC, minutengenau). `delDateIso` ist etwas anderes (Verfallsdatum aus den Metadaten). | Zum Wiederherstellen `deleteDateIso` nehmen. |
+| Ein entfernter Verweis ist nur ein als gelöscht markierter Verweis. `restoreSord` mit `minDeleteDate` holt ihn mit dem Ordner zurück, wenn er ab dessen Löschzeitpunkt entfernt wurde; weil der Zeitpunkt minutengenau ist, auch kurz davor in derselben Minute. | Vor dem Wiederherstellen mit `FindOptions.inclDeleted` zählen, was mitkommt (`elo_restore` zeigt es), und überzählige Verweise danach wieder entfernen. Früher entfernte Verweise bleiben weg. |
+| Ein Kind eines gelöschten Ordners lässt sich nicht für sich zurückholen, solange der Ordner gelöscht ist. | Erst den Elternordner, dann das Kind (oder beide in einem Aufruf, Eltern zuerst). |
+
 ## Indexserver-Skripte
 
 | Falle | Was stattdessen |

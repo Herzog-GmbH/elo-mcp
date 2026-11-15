@@ -6,7 +6,7 @@
  *   1. Aufruf ohne token  -> Pruefung + Vorschau + token (5 Minuten gueltig, einmal benutzbar)
  *   2. Aufruf mit token   -> dieselben Argumente, Zustand wird neu gelesen und mit der
  *                            Vorschau verglichen (Fingerabdruck); nur bei Gleichheit wird ausgefuehrt.
- * Nichts loescht, nichts verschiebt, keine Rechte- oder Maskenaenderung.
+ * Nichts loescht, keine Rechte- oder Maskenaenderung (Verweise, Verschieben, Loeschen: elo-mcp-ablage.js).
  *
  * Nur mit ELO_MCP_SCHREIBEN=1 (Schalter -Schreiben in elo-mcp.ps1); sonst stehen die
  * Werkzeuge nicht in der Liste. Die bauenden Werkzeuge (Stufe 3) nutzen denselben Ablauf.
