@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "elo-mcp",
   "display_name": "ELO-MCP-Server",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "ELO ECM für die KI: suchen, Dokumenttext lesen, ablegen, Workflows steuern und bauen, mit den Rechten des eigenen ELO-Kontos.",
   "long_description": "Ein MCP-Server für das **ELO ECM** der ELO Digital Office GmbH. Er läuft lokal neben dem installierten **ELO Client (ELO 25)** oder **ELO Java Client** und meldet sich mit eurem eigenen ELO-Konto an. ELO prüft jeden Zugriff selbst.\n\n**Vor dem ersten Start** die Zugangsdaten einmal selbst im Terminal hinterlegen (das Passwort wird per DPAPI für euer Windows-Konto verschlüsselt, es steht nie in den Einstellungen):\n\n`powershell -NoProfile -ExecutionPolicy Bypass -File Set-EloCredential.ps1`\n\n`Set-EloCredential.ps1` liegt im Release neben dem Paket und im Repo.\n\n**Voraussetzungen:** Windows 10/11 mit Windows PowerShell 5.1, ELO Client 25 oder ELO Java Client auf demselben Rechner, Indexserver mit Java-API (getestet mit 25.00). Die ELO-Bibliotheken sind nicht im Paket, sie kommen aus dem installierten Client.\n\n**Stufen:** Lesen ist immer an. Schreiben und Bauen schaltet ihr in den Einstellungen einzeln frei. Jede Änderung kommt zuerst als Vorschau und läuft nur mit einem Einmal-Token. Löschen heißt als gelöscht markieren (nie endgültig, wiederherstellbar) und gehört zu Stufe 3; ohne ausdrücklichen Schalter nur leere Ordner. Rechte ändert nur ein Werkzeug, und zwar an einem einzelnen Eintrag (Stufe 3).\n\n**Zwei Archive:** Mit „Archiv 2“ in den Einstellungen arbeitet die KI z. B. mit Produktiv und Test, jedes mit eigenen Stufen und Zugangsdaten. Jedes Werkzeug hat dann den Parameter `archiv`.\n\nKein Produkt der ELO Digital Office GmbH. ELO ist eine Marke der ELO Digital Office GmbH.",
   "author": {
@@ -156,6 +156,7 @@
     { "name": "elo_task_take", "description": "Gruppenaufgabe annehmen oder zurückgeben (Stufe 2)" },
     { "name": "elo_forward_task", "description": "Aufgabe weiterleiten, Gruppenaufgabe auf Wunsch vorher annehmen (Stufe 2)" },
     { "name": "elo_rename_in_folder", "description": "Wort in Kurzbezeichnung und Feldern einer Akte und in Vorgangsnamen ersetzen (Stufe 2)" },
+    { "name": "elo_workflow_terminate", "description": "Laufende Vorgänge beenden, per ID oder alle offenen Aufgaben eines Kontos (Stufe 2)" },
     { "name": "elo_map_set", "description": "Map-Felder eines Objekts oder laufenden Vorgangs setzen oder ausdrücklich leeren (Stufe 2)" },
     { "name": "elo_feed_post", "description": "Kommentar in den Feed eines Objekts schreiben (Stufe 2)" },
     { "name": "elo_color_set", "description": "Farbe eines Objekts setzen, ID oder Name (Stufe 2)" },

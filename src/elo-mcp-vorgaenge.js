@@ -9,6 +9,7 @@
  *   elo_workflow_edges         Stufe 3  Kanten an Vorlage oder Vorgang ergaenzen/entfernen
  *   elo_form_pages             Stufe 3  mehrere Formularseiten in einem Zug, Formularordner nach Vorbild
  *   elo_rename_in_folder       Stufe 2  Wort in Kurzbezeichnung und Feldern einer Akte ersetzen, Vorgangsnamen
+ *   elo_workflow_terminate     Stufe 2  laufende Vorgaenge beenden (IDs oder offene Aufgaben eines Kontos)
  *
  * Fallen, die hier eingebaut sind:
  *   - Gesperrte Vorgaenge nur mit mbOnlyLock entsperren. Mit mbAll eingecheckt landen halb
@@ -769,5 +770,159 @@ tool("elo_rename_in_folder",
       if (p.objekte.length) { var n = sordOf(p.objekte[0].id); res.stichprobe = { id: p.objekte[0].id, name: S(n.getName()) }; }
       if (!res.fehler.length) delete res.fehler;
       return res;
+    });
+  }, 2);
+
+/* ---------- Stufe 2: laufende Vorgaenge beenden ---------- */
+
+/* Beenden = terminateWorkFlow(flowId, LockC.YES): Der Vorgang endet und steht danach unter den beendeten Workflows.
+   Dokumente und Map bleiben unveraendert. deleteWorkFlow (loescht den Vorgang ganz) gibt es hier nicht.
+   Auswahl: ids (Vorgangs-IDs) oder benutzer (alle offenen Aufgaben, wie im Aufgabenbereich, optional mit Gruppen und
+   Vertretungen, optional nur einer Vorlage). Archive, deren Name bzw. Text nicht "Test" enthaelt, gelten als produktiv:
+   engere Obergrenze und deutliche Warnung. */
+var LIMIT_BEENDEN = { test: 200, produktiv: 20, aufgaben: 1000, seite: 100, pauseAlle: 20, pauseMs: 100 };
+
+function testArchiv() { return /test/i.test(ARCHIV_NAME + " " + trim(java.lang.System.getenv("ELO_MCP_ARCHIV"))); }
+function beendenGrenze() { return testArchiv() ? LIMIT_BEENDEN.test : LIMIT_BEENDEN.produktiv; }
+
+var vorlagenNamen = {};
+function vorlagenName(id) {
+  var k = S(id);
+  if (vorlagenNamen[k] === undefined) {
+    try { vorlagenNamen[k] = S(ELO.ix().checkoutWorkFlow(k, IXC.WFTypeC.TEMPLATE, IXC.WFDiagramC.mbLean, IXC.LockC.NO).getName()); }
+    catch (e) { vorlagenNamen[k] = ""; }
+  }
+  return vorlagenNamen[k];
+}
+
+/* Vorgangs-IDs der offenen Workflow-Aufgaben eines Kontos, in der Reihenfolge der Aufgabenliste, ohne Doppelte.
+   Liest hoechstens LIMIT_BEENDEN.aufgaben Aufgaben. updateInUseDate aus: Suchen markiert keine Aufgabe als in Bearbeitung. */
+function aufgabenVorgaenge(uid, gruppen, vertretungen) {
+  var fi = new IXC.FindTasksInfo(), uids = java.lang.reflect.Array.newInstance(java.lang.String, 1), fr = null, idx = 0, flows = [], gesehen = {}, mehr = false;
+  uids[0] = S(uid);
+  fi.setUserIds(uids); fi.setInclWorkflows(true); fi.setInclGroup(gruppen); fi.setInclDeputy(vertretungen);
+  fi.setInclActivities(false); fi.setInclReminders(false); fi.setUpdateInUseDate(false);
+  try {
+    fr = ELO.ix().findFirstTasks(fi, LIMIT_BEENDEN.seite);
+    while (true) {
+      var t = fr.getTasks();
+      for (var k = 0; t && k < t.length; k++) {
+        var w = t[k].getWfNode(); if (!w) continue;
+        var f = S(w.getFlowId());
+        if (!hat(gesehen, f)) { gesehen[f] = true; flows.push(f); }
+      }
+      idx += t ? t.length : 0;
+      if (!fr.isMoreResults() || !t || !t.length) break;
+      if (idx >= LIMIT_BEENDEN.aufgaben) { mehr = true; break; }
+      fr = ELO.ix().findNextTasks(fr.getSearchId(), idx, LIMIT_BEENDEN.seite);
+    }
+  } finally { if (fr) { try { ELO.ix().findClose(fr.getSearchId()); } catch (e) {} } }
+  return { flows: flows, aufgaben: idx, mehr: mehr };
+}
+
+/* Ein laufender Vorgang fuer Vorschau und Fingerabdruck, oder { fehlt: Grund }. */
+function vorgangZumBeenden(id) {
+  var wf;
+  try { wf = ELO.ix().checkoutWorkFlow(S(id), IXC.WFTypeC.ACTIVE, IXC.WFDiagramC.mbAll, IXC.LockC.NO); }
+  catch (e) { return { id: S(id), fehlt: "nicht als laufender Vorgang lesbar (beendet, unbekannt oder keine Rechte): " + errText(e) }; }
+  var k = wfKnoten(wf), akt = [], fp = [];
+  for (var nid in k) {
+    var n = k[nid];
+    if (S(n.getEnterDateIso()) && !S(n.getExitDateIso())) {
+      akt.push({ knotenId: S(n.getId()), knoten: S(n.getName()), bearbeiter: S(n.getUserName()) });
+      fp.push(S(n.getId()) + ":" + S(n.getUserId()));
+    }
+  }
+  var tid = S(wf.getTemplateId());
+  return { id: S(wf.getId()), name: S(wf.getName()), objekt: S(wf.getObjId()), vorlageId: tid, sperre: wfSperre(wf), aktiv: akt, abbild: wfAbbild(wf, "aktiv"),
+           fp: S(wf.getId()) + "|" + tid + "|" + fp.sort().join(",") + "|" + wfSperre(wf) };
+}
+
+function beendenPlan(a) {
+  var grenze = beendenGrenze(), test = testArchiv(), warn = [], ausgelassen = [], kandidaten, auswahl, mehr = false, quelle;
+  var mitIds = a.ids !== undefined && a.ids !== null && !(a.ids instanceof Array && !a.ids.length);
+  if (mitIds === !!trim(a.benutzer)) fail("Entweder ids oder benutzer angeben.");
+  if (mitIds && (a.gruppen !== undefined || a.vertretungen !== undefined)) fail("gruppen und vertretungen gelten nur zusammen mit benutzer.");
+  var vid = trim(a.vorlage) ? vorlagenId(a.vorlage) : "";
+  if (vid && !vorlagenName(vid)) fail("Vorlage " + vid + " nicht gefunden.");
+  if (mitIds) {
+    kandidaten = idListe(a.ids, grenze, "Vorgaenge" + (test ? "" : " (Archiv ist kein Testarchiv)"));
+    quelle = { art: "Vorgangs-IDs", anzahl: kandidaten.length };
+  } else {
+    var u;
+    try { u = ELO.ix().checkoutUser(trim(a.benutzer), IXC.CheckoutUsersC.BY_IDS_RAW, IXC.LockC.NO); }
+    catch (e) { fail("benutzer '" + trim(a.benutzer) + "' nicht gefunden."); }
+    var gruppen = a.gruppen !== false, vertretungen = a.vertretungen === true;
+    var gef = aufgabenVorgaenge(S(u.getId()), gruppen, vertretungen);
+    kandidaten = gef.flows;
+    quelle = { art: "offene Aufgaben", benutzer: S(u.getName()) + " [" + S(u.getId()) + "]" + (u.getType() === IXC.UserInfoC.TYPE_GROUP ? " (Gruppe)" : ""),
+               gruppenaufgaben: gruppen, vertretungen: vertretungen, aufgaben: gef.aufgaben, vorgaenge: kandidaten.length };
+    if (gef.mehr) warn.push("Mehr als " + LIMIT_BEENDEN.aufgaben + " offene Aufgaben; nur die ersten wurden durchsucht.");
+    if (!kandidaten.length) fail("Keine offenen Workflow-Aufgaben fuer " + quelle.benutzer + (gruppen ? " (mit Gruppenaufgaben)" : "") + ".");
+  }
+  auswahl = [];
+  for (var i = 0; i < kandidaten.length; i++) {
+    if (auswahl.length >= grenze) { mehr = true; break; }
+    if (i && i % LIMIT_BEENDEN.pauseAlle === 0) warte(LIMIT_BEENDEN.pauseMs);
+    var v = vorgangZumBeenden(kandidaten[i]);
+    if (v.fehlt) { ausgelassen.push({ id: v.id, grund: v.fehlt }); continue; }
+    if (vid && v.vorlageId !== vid) continue;
+    auswahl.push(v);
+  }
+  if (!auswahl.length) fail("Nichts zu beenden" + (vid ? " (Vorlage " + vorlagenName(vid) + " [" + vid + "])" : "") + "." + (ausgelassen.length ? " Ausgelassen: " + JSON.stringify(ausgelassen) : ""));
+  if (mehr) warn.push("Es gibt weitere Vorgaenge; hoechstens " + grenze + " je Aufruf. Danach erneut aufrufen.");
+  if (!test) warn.unshift("ACHTUNG: Archiv '" + (ARCHIV_NAME || "ohne Namen") + "' ist kein Testarchiv (Produktiv). Beendete Vorgaenge lassen sich nicht wieder fortsetzen. " +
+                          "Liste mit dem Anwender einzeln pruefen. Hoechstens " + grenze + " Vorgaenge je Aufruf.");
+  var fp = [], liste = [];
+  for (var j = 0; j < auswahl.length; j++) {
+    var w = auswahl[j];
+    fp.push(w.fp);
+    if (w.sperre) warn.push("Vorgang " + w.id + " ist gesperrt von " + w.sperre + "; Beenden scheitert vermutlich.");
+    if (!w.aktiv.length) warn.push("Vorgang " + w.id + " hat keinen aktiven Knoten.");
+    liste.push({ id: w.id, name: w.name, objekt: w.objekt, vorlage: (vorlagenName(w.vorlageId) || "?") + " [" + w.vorlageId + "]",
+                 aktiveKnoten: w.aktiv.map(function (x) { return x.knoten + " (" + (x.bearbeiter || "-") + ")"; }) });
+  }
+  var vs = { aktion: "Vorgaenge beenden (terminateWorkFlow): Sie stehen danach unter den beendeten Workflows, Dokumente bleiben unveraendert",
+             archiv: ARCHIV_NAME || undefined, auswahl: quelle, anzahl: liste.length, vorgaenge: liste };
+  if (vid) vs.nurVorlage = vorlagenName(vid) + " [" + vid + "]";
+  if (ausgelassen.length) vs.ausgelassen = ausgelassen;
+  return { vorschau: vs, warnungen: warn, auswahl: auswahl, fp: fp.join(";") };
+}
+
+/* Nach dem Beenden: als beendeter Vorgang lesbar = ok; noch als laufender lesbar = Abweichung. */
+function beendetPruefen(id) {
+  try { ELO.ix().checkoutWorkFlow(S(id), IXC.WFTypeC.FINISHED, IXC.WFDiagramC.mbLean, IXC.LockC.NO); return ""; } catch (e) {}
+  try { ELO.ix().checkoutWorkFlow(S(id), IXC.WFTypeC.ACTIVE, IXC.WFDiagramC.mbLean, IXC.LockC.NO); return "ABWEICHUNG: laeuft noch"; } catch (e2) {}
+  return "";
+}
+
+tool("elo_workflow_terminate",
+  "Beendet laufende Workflow-Vorgaenge (zweistufig), wie 'Workflow beenden' im Client: terminateWorkFlow, der Vorgang steht danach unter den beendeten Workflows, " +
+  "Dokumente bleiben unveraendert; nichts wird geloescht. Auswahl entweder ids (Vorgangs-IDs) oder benutzer (alle Vorgaenge mit offenen Aufgaben dieses Kontos, " +
+  "mit Gruppenaufgaben, optional Vertretungen), beides optional nur einer vorlage. Die Vorschau listet je Vorgang Name, aktive Knoten mit Bearbeiter und Vorlage. " +
+  "Hoechstens " + LIMIT_BEENDEN.test + " Vorgaenge je Aufruf, in Archiven ohne 'Test' im Namen " + LIMIT_BEENDEN.produktiv + " mit Warnung. " +
+  "Vorher Sicherung (Abbild jedes Vorgangs) unter %LOCALAPPDATA%\\elo-mcp\\sicherung.",
+  { ids: { type: "array", items: { type: "string" }, description: "Vorgangs-IDs (aus elo_workflows_of_object, elo_workflows_of_template, elo_my_tasks)" },
+    benutzer: { type: "string", description: "Konto (ID oder Name), dessen offene Aufgaben beendet werden" },
+    gruppen: { type: "boolean", description: "Nur mit benutzer: Aufgaben seiner Gruppen dazunehmen, Standard true" },
+    vertretungen: { type: "boolean", description: "Nur mit benutzer: Aufgaben, die er in Vertretung sieht, dazunehmen, Standard false" },
+    vorlage: { type: "string", description: "Nur Vorgaenge dieser Vorlage (ID oder exakter Name)" },
+    token: P_TOKEN },
+  [], function (a) {
+    return zweiSchritte("elo_workflow_terminate", a, function () { return beendenPlan(a); }, function (p) {
+      var sicherung = jsonSichern("workflows-beenden", { aktion: "Vorgaenge beendet (terminateWorkFlow)", archiv: ARCHIV_NAME || undefined,
+                                                         vorgaenge: p.auswahl.map(function (w) { return w.abbild; }) });
+      var ok = [], fehler = [];
+      for (var i = 0; i < p.auswahl.length; i++) {
+        var w = p.auswahl[i];
+        if (i && i % LIMIT_BEENDEN.pauseAlle === 0) warte(LIMIT_BEENDEN.pauseMs);
+        try {
+          ELO.ix().terminateWorkFlow(w.id, IXC.LockC.YES);
+          var abw = beendetPruefen(w.id);
+          if (abw) fehler.push({ id: w.id, name: w.name, fehler: abw }); else ok.push({ id: w.id, name: w.name });
+        } catch (e) { fehler.push({ id: w.id, name: w.name, fehler: errText(e) }); }
+      }
+      return { beendet: ok.length, fehlgeschlagen: fehler.length, vorgaenge: ok, fehler: fehler.length ? fehler : undefined, sicherung: sicherung,
+               hinweis: "Beendete Vorgaenge: elo_workflows_of_object mit beendete=true." };
     });
   }, 2);

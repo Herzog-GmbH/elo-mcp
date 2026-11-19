@@ -1,5 +1,15 @@
 # Änderungen
 
+## 0.14.0 – 2026-11-19
+
+- **Vorgänge beenden:** neues Werkzeug `elo_workflow_terminate` (Stufe 2, jetzt 57). Anlass: Vor einem Anwendertest mussten Testaufgaben aufgeräumt werden, was bisher nur ein Einmal-Skript konnte.
+  - Beendet laufende Vorgänge mit `terminateWorkFlow(flowId, LockC.YES)`: Sie stehen danach unter den beendeten Workflows, Dokumente und Map bleiben unverändert. `deleteWorkFlow` gibt es bewusst nicht.
+  - Auswahl per `ids` (Vorgangs-IDs) oder `benutzer` (ID oder Name): alle Vorgänge mit offenen Aufgaben dieses Kontos über `findFirstTasks` mit `userIds`, `gruppen` (Standard an) und `vertretungen` (Standard aus), höchstens 1000 Aufgaben durchsucht, `updateInUseDate` aus. Beides optional nur Vorgänge einer `vorlage` (ID oder Name).
+  - Die Vorschau listet je Vorgang ID, Name, Objekt, aktive Knoten mit Bearbeiter und Vorlage, dazu die Anzahl; nicht lesbare oder schon beendete Vorgänge stehen unter `ausgelassen`. Gesperrte Vorgänge werden gewarnt.
+  - Höchstens 200 Vorgänge je Aufruf. In einem Archiv, dessen Name bzw. Text nicht „Test“ enthält, höchstens 20 und eine deutliche Warnung „kein Testarchiv (Produktiv)“. Gibt es mehr, sagt die Vorschau das; danach erneut aufrufen.
+  - Vor dem Beenden ein Abbild jedes Vorgangs (Knoten, Bearbeiter, Kanten) als JSON unter `%LOCALAPPDATA%\elo-mcp\sicherung`. Danach je Vorgang zurückgelesen (als beendeter Vorgang lesbar) und als beendet oder mit Fehler und Grund gemeldet.
+  - Offline-Test um einen Indexserver im Speicher für das Beenden erweitert (260/396/402 Prüfungen). Live in einem Testarchiv: Probe-Vorgang gestartet und über `ids` beendet; Auswahl über `benutzer` als Vorschau geprüft.
+
 ## 0.13.0 – 2026-11-15
 
 - **Verweise, Verschieben, Löschen und Wiederherstellen**, fünf neue Werkzeuge in `src/elo-mcp-ablage.js` (jetzt 56). Anlass: das Aufräumen nach dem Umzug von Belegen in Akten (Verweise in Übersichtsordnern, alte Lieferantenverweise, leere Altordner), das bisher nur ein Einmal-Skript konnte:

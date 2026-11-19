@@ -20,7 +20,7 @@ pruefe("initialize: Hinweise nennen die Stufen", init.result.instructions.indexO
 
 var liste = handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }).result.tools, namen = {};
 for (var i = 0; i < liste.length; i++) namen[liste[i].name] = true;
-var erwartet = 25 + (SCHREIBEN_ERLAUBT ? 13 : 0) + (BAUEN_ERLAUBT ? 18 : 0);
+var erwartet = 25 + (SCHREIBEN_ERLAUBT ? 14 : 0) + (BAUEN_ERLAUBT ? 18 : 0);
 pruefe("tools/list: " + erwartet + " Werkzeuge bei Stufen " + stufenText(), liste.length === erwartet, liste.length);
 pruefe("tools/list: Schreibwerkzeug nur mit -Schreiben", !!namen.elo_set_fields === SCHREIBEN_ERLAUBT);
 pruefe("tools/list: Bauwerkzeug nur mit -Bauen", !!namen.elo_workflow_build === BAUEN_ERLAUBT);
@@ -1071,6 +1071,158 @@ try {
   }
 } finally {
   ELO.ix = abIxEcht; ELO.connect = abConnEcht; benutzerName = abNameEcht; protokoll = abProtEcht; jsonSichern = abSichEcht; warte = abWarteEcht;
+}
+
+/* ---------- Vorgaenge beenden (nur im Speicher, erfundene Vorgaenge) ---------- */
+
+pruefe("tools/list: Vorgaenge beenden nur mit -Schreiben", !!namen.elo_workflow_terminate === SCHREIBEN_ERLAUBT);
+
+/* Konto 75 (Gruppe 3). Vorgang 101 (Vorlage 69) mit zwei Aufgaben fuer 75, 102 (Vorlage 70) bei Gruppe 3,
+   103 (Vorlage 69) nur in Vertretung sichtbar, 104 beendet. */
+var WB, wbAufrufe, wbFind, wbGesichert, wbBlatt;
+function wbNeu() {
+  wbAufrufe = []; wbFind = []; wbGesichert = [];
+  WB = { "101": { name: "Pruefung A", obj: 4711, tpl: 69, aktiv: true, knoten: [[2, "Pruefen", "Test, Konto", 75], [3, "Freigeben", "Test, Konto", 75]] },
+         "102": { name: "Pruefung B", obj: 4712, tpl: 70, aktiv: true, knoten: [[2, "Buchen", "Beispielgruppe", 3]] },
+         "103": { name: "Pruefung C", obj: 4713, tpl: 69, aktiv: true, knoten: [[2, "Pruefen", "Muster, Max", 5]] },
+         "104": { name: "Alt", obj: 4714, tpl: 69, aktiv: false, knoten: [] } };
+}
+function wbDiagramm(id) {
+  var o = WB[id], wf = new IXC.WFDiagram(), ns = [];
+  wf.setId(parseInt(id, 10)); wf.setName(o.name); wf.setObjId(String(o.obj)); wf.setTemplateId(o.tpl); wf.setLockName(o.sperre || "");
+  for (var i = 0; i < o.knoten.length; i++) {
+    var k = o.knoten[i], n = new IXC.WFNode();
+    n.setId(k[0]); n.setName(k[1]); n.setType(IXC.WFNodeC.TYPE_PERSONNODE); n.setUserName(k[2]); n.setUserId(k[3]); n.setEnterDateIso("20261119080000"); n.setExitDateIso("");
+    ns.push(n);
+  }
+  wf.setNodes(jarr("WFNode", ns));
+  return wf;
+}
+function wbAufgabe(flow, knoten, bei) {
+  return { getWfNode: function () { return { getFlowId: function () { return flow; }, getNodeName: function () { return knoten; }, getUserName: function () { return bei; } }; } };
+}
+var wbIxEcht = ELO.ix, wbConnEcht = ELO.connect, wbProtEcht = protokoll, wbSichEcht = jsonSichern, wbWarteEcht = warte, wbTestEcht = testArchiv, wbVnEcht = vorlageNachName, wbSeite = LIMIT_BEENDEN.seite;
+ELO.ix = function () {
+  return {
+    checkoutUser: function (wer) {
+      if (String(wer) !== "75" && String(wer) !== "Test, Konto") throw "[ELOIX:5023]unbekannt " + wer;
+      var u = new IXC.UserInfo(); u.setId(75); u.setName("Test, Konto"); u.setType(IXC.UserInfoC.TYPE_USER); return u;
+    },
+    findFirstTasks: function (fi, max) {
+      var l = [wbAufgabe(101, "Pruefen", "Test, Konto"), wbAufgabe(101, "Freigeben", "Test, Konto")];
+      if (fi.isInclGroup()) l.push(wbAufgabe(102, "Buchen", "Beispielgruppe"));
+      if (fi.isInclDeputy()) l.push(wbAufgabe(103, "Pruefen", "Muster, Max"));
+      l = l.filter(function (t) { return WB[String(t.getWfNode().getFlowId())].aktiv; });
+      wbFind.push({ user: String(fi.getUserIds()[0]), gruppe: fi.isInclGroup(), vertretung: fi.isInclDeputy(), inUse: fi.isUpdateInUseDate(), wf: fi.isInclWorkflows() });
+      function seite(ab) { var s = l.slice(ab, ab + max); return { getTasks: function () { return s; }, isMoreResults: function () { return ab + max < l.length; }, getSearchId: function () { return "t1"; } }; }
+      wbAufrufe.push("find"); wbBlatt = seite;
+      return seite(0);
+    },
+    findNextTasks: function (sid, ab) { wbAufrufe.push("next " + ab); return wbBlatt(ab); },
+    findClose: function () { wbAufrufe.push("close"); },
+    checkoutWorkFlow: function (id, typ) {
+      id = String(id); typ = String(typ);
+      if (typ === "TEMPLATE") { var t = new IXC.WFDiagram(); t.setId(parseInt(id, 10)); t.setName({ "69": "WF-Dokument pruefen", "70": "Andere Vorlage" }[id] || ""); if (!t.getName()) throw "[ELOIX:5023]keine Vorlage"; return t; }
+      if (!WB[id]) throw "[ELOIX:5023]nicht gefunden " + id;
+      if ((typ === "ACTIVE") !== WB[id].aktiv) throw "[ELOIX:5023]nicht " + typ + " " + id;
+      return wbDiagramm(id);
+    },
+    terminateWorkFlow: function (id, lock) {
+      id = String(id); wbAufrufe.push("terminate " + id + (lock === IXC.LockC.YES ? " sperren" : ""));
+      if (WB[id].fehler) throw "[ELOIX:2000]" + WB[id].fehler;
+      if (!WB[id].bleibt) WB[id].aktiv = false;
+    }
+  };
+};
+ELO.connect = function () { return { getLoginResult: function () { return { getUser: function () { return { getId: function () { return 75; }, getName: function () { return "Test, Konto"; } }; } }; } }; };
+protokoll = function () {};
+jsonSichern = function (name, inhalt) { wbGesichert.push({ name: name, inhalt: inhalt }); return "sicherung-" + name; };
+warte = function () {};
+vorlageNachName = function (n) { return { "WF-Dokument pruefen": ["69"], "Andere Vorlage": ["70"] }[n] || []; };
+function wbZwei(args) {
+  var v = mpJson(callTool("elo_workflow_terminate", args));
+  if (v.fehler) return { vorschau: v, ergebnis: v };
+  var vorAufrufe = wbAufrufe.filter(function (x) { return /^terminate/.test(x); }).length, a2 = {};
+  for (var k in args) a2[k] = args[k];
+  a2.token = v.token;
+  return { vorschau: v, terminateInVorschau: vorAufrufe, ergebnis: mpJson(callTool("elo_workflow_terminate", a2)) };
+}
+try {
+  if (SCHREIBEN_ERLAUBT) {
+    testArchiv = function () { return true; };
+    LIMIT_BEENDEN.seite = 2;
+    wbNeu();
+    var wbB1 = wbZwei({ benutzer: "75" });
+    var wbV1 = wbB1.vorschau.vorschau;
+    pruefe("elo_workflow_terminate benutzer: Vorschau mit Gruppenaufgaben, ohne Vertretung, jeder Vorgang einmal", wbB1.terminateInVorschau === 0 && wbV1.anzahl === 2 &&
+           wbV1.vorgaenge[0].id === "101" && wbV1.vorgaenge[1].id === "102" && wbV1.auswahl.benutzer === "Test, Konto [75]" && wbV1.auswahl.aufgaben === 3, JSON.stringify(wbV1));
+    pruefe("elo_workflow_terminate benutzer: Vorschau nennt aktive Knoten mit Bearbeiter und Vorlage", wbV1.vorgaenge[0].aktiveKnoten.join("|") === "Pruefen (Test, Konto)|Freigeben (Test, Konto)" &&
+           wbV1.vorgaenge[0].vorlage === "WF-Dokument pruefen [69]" && wbV1.vorgaenge[1].vorlage === "Andere Vorlage [70]" && wbV1.vorgaenge[0].name === "Pruefung A", JSON.stringify(wbV1.vorgaenge));
+    pruefe("elo_workflow_terminate benutzer: Suche mit userIds, Gruppen, ohne Vertretung, ohne inUseDate, blaettert und schliesst",
+           wbFind[0].user === "75" && wbFind[0].gruppe === true && wbFind[0].vertretung === false && wbFind[0].inUse === false && wbFind[0].wf === true &&
+           wbAufrufe.indexOf("next 2") >= 0 && wbAufrufe.indexOf("close") >= 0, JSON.stringify(wbFind) + " " + wbAufrufe.join());
+    pruefe("elo_workflow_terminate benutzer: beendet mit Sperre, Sicherung vorher, Ergebnis je Vorgang",
+           wbB1.ergebnis.modus === "ausgefuehrt" && wbB1.ergebnis.ergebnis.beendet === 2 && wbB1.ergebnis.ergebnis.fehler === undefined &&
+           wbAufrufe.filter(function (x) { return /^terminate/.test(x); }).join() === "terminate 101 sperren,terminate 102 sperren" &&
+           wbGesichert.length === 1 && wbGesichert[0].inhalt.vorgaenge.length === 2 && wbGesichert[0].inhalt.vorgaenge[0].knoten.length === 2 && !WB["101"].aktiv && !WB["102"].aktiv,
+           JSON.stringify(wbB1.ergebnis) + " " + wbAufrufe.join());
+    pruefe("elo_workflow_terminate benutzer: danach nichts mehr offen", /Keine offenen Workflow-Aufgaben/.test(mpJson(callTool("elo_workflow_terminate", { benutzer: "75" })).fehler));
+
+    wbNeu();
+    var wbG = mpJson(callTool("elo_workflow_terminate", { benutzer: "Test, Konto", gruppen: false }));
+    pruefe("elo_workflow_terminate: gruppen=false nur eigene Aufgaben", wbG.vorschau.anzahl === 1 && wbG.vorschau.vorgaenge[0].id === "101" && wbFind[0].gruppe === false, JSON.stringify(wbG.vorschau));
+    var wbD = mpJson(callTool("elo_workflow_terminate", { benutzer: "75", vertretungen: true }));
+    pruefe("elo_workflow_terminate: vertretungen=true nimmt Vertretungsaufgaben dazu", wbD.vorschau.anzahl === 3 && wbD.vorschau.vorgaenge[2].id === "103", JSON.stringify(wbD.vorschau));
+    var wbT = mpJson(callTool("elo_workflow_terminate", { benutzer: "75", vertretungen: true, vorlage: "WF-Dokument pruefen" }));
+    pruefe("elo_workflow_terminate: vorlage grenzt ein (Name)", wbT.vorschau.anzahl === 2 && wbT.vorschau.vorgaenge[0].id === "101" && wbT.vorschau.vorgaenge[1].id === "103" &&
+           wbT.vorschau.nurVorlage === "WF-Dokument pruefen [69]", JSON.stringify(wbT.vorschau));
+    pruefe("elo_workflow_terminate: vorlage ohne Treffer", /Nichts zu beenden \(Vorlage Andere Vorlage \[70\]\)/.test(mpJson(callTool("elo_workflow_terminate", { benutzer: "75", gruppen: false, vorlage: "70" })).fehler));
+    pruefe("elo_workflow_terminate: unbekannte Vorlage", /Keine Vorlage/.test(mpJson(callTool("elo_workflow_terminate", { benutzer: "75", vorlage: "Gibts nicht" })).fehler));
+    pruefe("elo_workflow_terminate: unbekannter Benutzer", /nicht gefunden/.test(mpJson(callTool("elo_workflow_terminate", { benutzer: "Niemand" })).fehler));
+
+    var wbI = mpJson(callTool("elo_workflow_terminate", { ids: ["103", "104", "999", "103"] }));
+    pruefe("elo_workflow_terminate ids: doppelte einmal, beendete und unbekannte ausgelassen", wbI.vorschau.anzahl === 1 && wbI.vorschau.vorgaenge[0].id === "103" &&
+           wbI.vorschau.ausgelassen.length === 2 && wbI.vorschau.ausgelassen[0].id === "104" && /nicht als laufender Vorgang/.test(wbI.vorschau.ausgelassen[1].grund) &&
+           wbI.vorschau.auswahl.art === "Vorgangs-IDs" && wbI.warnungen.length === 0, JSON.stringify(wbI));
+    pruefe("elo_workflow_terminate: nur beendete -> nichts zu beenden", /Nichts zu beenden/.test(mpJson(callTool("elo_workflow_terminate", { ids: ["104"] })).fehler));
+    pruefe("elo_workflow_terminate: ids und benutzer zusammen abgelehnt", /Entweder ids oder benutzer/.test(mpJson(callTool("elo_workflow_terminate", { ids: ["101"], benutzer: "75" })).fehler));
+    pruefe("elo_workflow_terminate: ohne Auswahl abgelehnt", /Entweder ids oder benutzer/.test(mpJson(callTool("elo_workflow_terminate", {})).fehler) &&
+           /Entweder ids oder benutzer/.test(mpJson(callTool("elo_workflow_terminate", { ids: [] })).fehler));
+    pruefe("elo_workflow_terminate: gruppen nur mit benutzer", /nur zusammen mit benutzer/.test(mpJson(callTool("elo_workflow_terminate", { ids: ["101"], gruppen: true })).fehler));
+    pruefe("elo_workflow_terminate: ID muss eine Zahl sein", /keine ID/.test(mpJson(callTool("elo_workflow_terminate", { ids: ["abc"] })).fehler));
+    var wbViele = []; for (var wi = 1; wi <= 201; wi++) wbViele.push(String(1000 + wi));
+    pruefe("elo_workflow_terminate: Testarchiv hoechstens 200", /Hoechstens 200 Vorgaenge/.test(mpJson(callTool("elo_workflow_terminate", { ids: wbViele })).fehler));
+
+    WB["103"].sperre = "Muster, Max";
+    pruefe("elo_workflow_terminate: gesperrter Vorgang wird gewarnt", enthaelt(mpJson(callTool("elo_workflow_terminate", { ids: ["103"] })).warnungen, "gesperrt von Muster, Max"));
+    delete WB["103"].sperre;
+    var wbF = mpJson(callTool("elo_workflow_terminate", { ids: ["101"] }));
+    WB["101"].knoten[0][3] = 3;
+    pruefe("elo_workflow_terminate: Bearbeiter seit der Vorschau geaendert -> abgelehnt", /geaendert/.test(mpJson(callTool("elo_workflow_terminate", { ids: ["101"], token: wbF.token })).fehler) && WB["101"].aktiv);
+
+    wbNeu(); WB["102"].fehler = "Vorgang gesperrt"; WB["103"].bleibt = true;
+    var wbE = wbZwei({ ids: ["101", "102", "103"] });
+    var wbEf = wbE.ergebnis.ergebnis.fehler || [];
+    pruefe("elo_workflow_terminate: Fehler je Vorgang mit Grund, die anderen laufen weiter", wbE.ergebnis.ergebnis.beendet === 1 && wbE.ergebnis.ergebnis.vorgaenge[0].id === "101" &&
+           wbEf.length === 2 && wbEf[0].id === "102" && /ELOIX:2000 Vorgang gesperrt/.test(wbEf[0].fehler) && wbEf[1].id === "103" && /ABWEICHUNG: laeuft noch/.test(wbEf[1].fehler),
+           JSON.stringify(wbE.ergebnis));
+
+    testArchiv = function () { return false; };
+    wbNeu();
+    var wbP = mpJson(callTool("elo_workflow_terminate", { ids: ["101"] }));
+    pruefe("elo_workflow_terminate: kein Testarchiv -> deutliche Warnung zuerst", /^ACHTUNG: .*kein Testarchiv \(Produktiv\)/.test(wbP.warnungen[0]) && /Hoechstens 20 /.test(wbP.warnungen[0]), JSON.stringify(wbP.warnungen));
+    var wbP20 = []; for (var wj = 1; wj <= 21; wj++) wbP20.push(String(2000 + wj));
+    pruefe("elo_workflow_terminate: kein Testarchiv hoechstens 20", /Hoechstens 20 Vorgaenge \(Archiv ist kein Testarchiv\)/.test(mpJson(callTool("elo_workflow_terminate", { ids: wbP20 })).fehler));
+    LIMIT_BEENDEN.produktiv = 1;
+    var wbP1 = mpJson(callTool("elo_workflow_terminate", { benutzer: "75" }));
+    pruefe("elo_workflow_terminate: mehr als die Grenze -> die ersten, Hinweis auf weitere", wbP1.vorschau.anzahl === 1 && enthaelt(wbP1.warnungen, "weitere Vorgaenge"), JSON.stringify(wbP1));
+    LIMIT_BEENDEN.produktiv = 20;
+  } else {
+    pruefe("gesperrtes Beenden wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_workflow_terminate", { ids: ["1"] })).fehler));
+  }
+} finally {
+  ELO.ix = wbIxEcht; ELO.connect = wbConnEcht; protokoll = wbProtEcht; jsonSichern = wbSichEcht; warte = wbWarteEcht; testArchiv = wbTestEcht; vorlageNachName = wbVnEcht;
+  LIMIT_BEENDEN.seite = wbSeite;
 }
 
 OUT.println("");

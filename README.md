@@ -6,7 +6,7 @@
 
 [![Getestet mit ELO 25](https://img.shields.io/badge/getestet%20mit-ELO%2025%20(IX%2025.00)-0067b8)](#voraussetzungen)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![56 Werkzeuge](https://img.shields.io/badge/Werkzeuge-56-2ea44f)](#werkzeuge)
+[![57 Werkzeuge](https://img.shields.io/badge/Werkzeuge-57-2ea44f)](#werkzeuge)
 [![Vorschau und Token](https://img.shields.io/badge/Schreiben-Vorschau%20%2B%20Token-e36209)](#sicherheit)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#voraussetzungen)
@@ -89,7 +89,7 @@ Alle Schalter stehen hinter dem Skriptpfad in der Client-Konfiguration.
 | Schalter | Wirkung |
 |---|---|
 | `-IxUrl <url>` | IX-URL des ELO-Servers (Pflicht, alternativ Umgebungsvariable `ELO_IX_URL`) |
-| `-Schreiben` | Stufe 2 freischalten: ablegen, neue Version, Indexfelder, Map-Felder, Feed-Kommentar, Workflow starten, Aufgabe weiterleiten, Verweise anlegen und entfernen, verschieben |
+| `-Schreiben` | Stufe 2 freischalten: ablegen, neue Version, Indexfelder, Map-Felder, Feed-Kommentar, Workflow starten, Aufgabe weiterleiten, Vorgänge beenden, Verweise anlegen und entfernen, verschieben |
 | `-Bauen` | Stufe 3 freischalten: Workflow-Vorlagen, Skripte, ELOas-Regeln, Formularseiten, Verschlagwortungsmasken, als gelöscht markieren und wiederherstellen. **Am besten nur gegen ein Testarchiv.** |
 | `-CredentialFile <pfad>` | andere Zugangsdaten, z. B. ein zweites Konto für das Testarchiv. Standard `%LOCALAPPDATA%\elo-mcp\elo-credential.xml` |
 | `-ClientDir <pfad>` | Ordner des ELO Client bzw. ELO Java Client, wenn er nicht unter `Programme` liegt |
@@ -159,6 +159,7 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_task_take` | Gruppenaufgabe annehmen wie „Workflow annehmen“ im Client, mit `zurueckgeben` an die Gruppe aus der Vorlage zurückgeben (oder an eine eigene Gruppe in `an`). Leitet nicht weiter |
 | `elo_forward_task` | Aufgabe weiterleiten. Bei mehreren Nachfolgern Pflichtangabe. Knoten mit Formular nur mit `trotzFormular`, weil Formularprüfungen über die API nicht laufen. `annehmen` nimmt eine Gruppenaufgabe vorher an und gibt sie zurück, wenn das Weiterleiten scheitert |
 | `elo_rename_in_folder` | Ein Wort, z. B. einen falsch geschriebenen Namen, in der Kurzbezeichnung und in benannten Feldern eines Objekts und seiner Unterobjekte ersetzen (Standard zwei Ebenen, höchstens drei und 300 Objekte), dazu im Namen laufender Vorgänge. Nur ganze Wörter (auch mit Umlauten), Referenzen und Dokumentinhalte bleiben unberührt |
+| `elo_workflow_terminate` | Laufende Vorgänge beenden wie „Workflow beenden“ im Client (`terminateWorkFlow`): Sie stehen danach unter den beendeten Workflows, Dokumente bleiben unverändert, gelöscht wird nichts. Auswahl per `ids` oder `benutzer` (alle Vorgänge mit offenen Aufgaben dieses Kontos, `gruppen` Standard an, `vertretungen` Standard aus), beides optional nur einer `vorlage`. Die Vorschau listet je Vorgang Name, aktive Knoten mit Bearbeiter und Vorlage. Höchstens 200 je Aufruf; in einem Archiv ohne „Test“ im Namen höchstens 20 und mit deutlicher Warnung. Sicherung jedes Vorgangs vorher, Ergebnis je Vorgang |
 | `elo_map_set` | Map-Felder eines Objekts oder (mit `workflow`) eines laufenden Vorgangs setzen, Vorschau bisher → neu. Leeren nur ausdrücklich über `leeren`, ein leerer Wert wird abgelehnt. Andere Map-Felder und die Indexfelder bleiben. Lehnt Schlüssel ab, die auf `_PW` enden oder nach Passwort/Token aussehen, ebenso eine andere Groß-/Kleinschreibung eines vorhandenen Schlüssels. Sicherung der alten Werte, zurücklesen. Höchstens 50 Felder je Aufruf |
 | `elo_feed_post` | Kommentar in den Feed eines Objekts schreiben, unter dem angemeldeten Konto. Die Vorschau meldet denselben Text im Feed und Erwähnungen, die eine Benachrichtigung auslösen. Danach zurücklesen. Ändern und Löschen geht nicht |
 | `elo_color_set` | Farbe eines Objekts setzen, per ID oder Name; mehrdeutige Namen (zwei Farben heißen „Gelb“) werden abgelehnt. Vorschau bisher → neu mit ID und Name, warnt bei laufendem Workflow, Sicherung, zurücklesen |
@@ -241,7 +242,7 @@ MCP-Clients starten jeden Server einmal je Sitzung. Eine JVM je Sitzung kostet r
 | `src/elo-mcp-masken.js` | Masken lesen (Stufe 1) und bauen (Stufe 3), Layout-Regeln |
 | `src/elo-mcp-benutzer.js` | Benutzerkonten: Windows-Name und Mail lesen, doppelte finden (Stufe 1), setzen (Stufe 3) |
 | `src/elo-mcp-rechte.js` | Objektrechte und Vertretungen lesen und vergleichen (Stufe 1), setzen (Stufe 3) |
-| `src/elo-mcp-vorgaenge.js` | Laufende Vorgänge einer Vorlage (Stufe 1), Knoten, Kanten und Aktivieren an Vorlagen und Vorgängen, Formularseiten (Stufe 3), Wort in einer Akte ersetzen (Stufe 2) |
+| `src/elo-mcp-vorgaenge.js` | Laufende Vorgänge einer Vorlage (Stufe 1), Knoten, Kanten und Aktivieren an Vorlagen und Vorgängen, Formularseiten (Stufe 3), Wort in einer Akte ersetzen, Vorgänge beenden (Stufe 2) |
 | `src/elo-mcp-notizen.js` | Notizen und Stempel lesen, Map-Felder und Feed lesen (Stufe 1), Map-Felder an Objekt oder Vorgang setzen und Feed-Kommentar schreiben (Stufe 2) |
 | `src/elo-mcp-ergaenzungen.js` | Farben lesen (Stufe 1) und setzen (Stufe 2), lesende registrierte Funktionen (Stufe 1), beliebige registrierte Funktion und Formulardesigner „Aktualisieren“ (Stufe 3) |
 | `src/elo-mcp-ablage.js` | Verweise lesen (Stufe 1), anlegen, entfernen und verschieben (Stufe 2), als gelöscht markieren und wiederherstellen (Stufe 3) |
