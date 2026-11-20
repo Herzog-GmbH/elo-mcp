@@ -11,6 +11,8 @@ Was uns beim Bau dieses Servers begegnet ist, geprüft gegen einen Indexserver 2
 | `FindChildren.endLevel = 0` wirkt wie `1`. | `1` = direkte Kinder, `2` = zwei Ebenen, `-1` = beliebig tief. Mit `findByIndex` kombiniert grenzt `FindChildren` korrekt ein. |
 | Suchen ohne `findClose` lassen Suchen auf dem Server offen. | `findClose(searchId)` immer im `finally`. |
 | Abfragen über alle laufenden oder beendeten Workflows (`findFirstWorkflows` mit Platzhalter) können einen Indexserver mit `OutOfMemoryError` lahmlegen. | Workflows nur zu einem Objekt (`setObjId`) oder per ID lesen. |
+| `findNextSords(searchId, idx, max, sordZ)` erwartet in `idx` den **absoluten** Startindex, nicht die Seitennummer. | Für eine Seite ab `n`: `findFirstSords(fi, 1, …)`, dann `findNextSords(id, n, max, …)`; `isMoreResults` der letzten Antwort sagt, ob es weitergeht. |
+| Die Trefferzahl einer Suche kommt nur mit `FindOptions.setEvalCount(true)` in `FindResult.getCount()`. | Erst zählen (eine Abfrage, Ergebnisgröße 1), dann entscheiden, ob seitenweises Lesen vertretbar ist. |
 
 ## Dokumente und Versionen
 
@@ -124,6 +126,8 @@ Was uns beim Bau dieses Servers begegnet ist, geprüft gegen einen Indexserver 2
 | Der Indexserver liest `//@include` **überall** als Include, auch mitten in einem Kommentar. | Die Zeichenfolge nur in den Kopfzeilen verwenden. |
 | Direkt unter `IndexServer Scripting Base/_ALL/<eigener Ordner>` werden Includes aus Business-Solutions-Paketen nicht aufgelöst. | Eigene Skripte in ein Paket unter `Business Solutions Custom`, mit Referenz in `IndexServer Scripting Base/_ALL/business_solutions`. |
 | IX-Skripte werden als cp1252 gelesen. | Nicht-ASCII nur als `\uXXXX`. |
+| Ob eine neue Version wirklich geladen ist, zeigt die Statusseite nicht. | `getCompiledScripts()` liefert je Objekt-ID die MD5 der geladenen Fassung; sie ist gleich `DocVersion.getMd5()` der aktuellen Version. Vor und nach `reloadScripts()` vergleichen (`elo_ix_reload`). Fehlt eine ID nachher, wurde das Skript nicht kompiliert. |
+| Ein Skript in einem Paket außerhalb von `IndexServer Scripting Base` wird nie geladen, auch nicht nach dem Neuladen. | Verweis nach `IndexServer Scripting Base/_ALL/business_solutions` anlegen (`elo_reference_set`), dann neu laden. |
 
 ## Rhino und Windows
 

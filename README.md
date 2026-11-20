@@ -6,7 +6,7 @@
 
 [![Getestet mit ELO 25](https://img.shields.io/badge/getestet%20mit-ELO%2025%20(IX%2025.00)-0067b8)](#voraussetzungen)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![60 Werkzeuge](https://img.shields.io/badge/Werkzeuge-60-2ea44f)](#werkzeuge)
+[![62 Werkzeuge](https://img.shields.io/badge/Werkzeuge-62-2ea44f)](#werkzeuge)
 [![Vorschau und Token](https://img.shields.io/badge/Schreiben-Vorschau%20%2B%20Token-e36209)](#sicherheit)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#voraussetzungen)
@@ -123,7 +123,8 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 |---|---|
 | `elo_whoami` | Konto, Server, IX-Version, freigeschaltete Stufen |
 | `elo_search` | iSearch über Titel, Volltext und Indexfelder, optional auf einen Ordner samt Unterordnern begrenzt, höchstens 50 Treffer |
-| `elo_find_by_fields` | Datenbanksuche über Maske und Indexfelder, Platzhalter `*`. Ohne Feld oder Namen abgelehnt |
+| `elo_find_by_fields` | Datenbanksuche über Maske und Indexfelder, Platzhalter `*`. Ohne Feld oder Namen abgelehnt. Seitenweise mit `ab` (bis 5000), `gesamt` zählt alle Treffer, `spalten` grenzt die gezeigten Indexfelder ein, `mapFelder` zeigt bis zu 10 Map-Felder je Treffer |
+| `elo_count` | Zählt Objekte einer Maske, nur Zahlen: ohne `gruppe` eine Zählabfrage, mit `gruppe` (ein oder zwei Felder) Anzahl je Wert bzw. Wertepaar, mit `gefuellt` je Gruppe die Zahl gefüllter Felder. Liest dafür in Seiten zu 200 mit Pause, höchstens 5000 Objekte; eine Zählabfrage vorher lehnt größere Mengen ab |
 | `elo_list` | Ordnerinhalt, eine Ebene, höchstens 300 |
 | `elo_get_object` | Metadaten, Indexfelder mit Bezeichnung, Farbe, Pfad, aktuelle Version, `elodms://`-Link |
 | `elo_get_versions` | Versionsliste, neueste zuerst |
@@ -134,7 +135,7 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_workflows_of_object` | Laufende (mit aktiven Knoten) oder beendete Workflows zu genau einem Objekt |
 | `elo_my_tasks` | Eigene Aufgaben wie im Aufgabenbereich des Clients, auch über Gruppen: Workflow-Aufgaben und Wiedervorlagen (`art`), alle Prioritäten. `wiedervorlagen=false` nur Workflow-Aufgaben |
 | `elo_workflow_export` | Vorlage als JSON-Bauplan ([Format](docs/BAUPLAN.md)) |
-| `elo_mask` | Verschlagwortungsmaske: Art, Reiter, alle Felder mit Typ, Reiter, Zeile, Spalten, Länge, Pflicht und Rechten. Dazu eine Layout-Prüfung (Reiter ohne Namen, Felder vor Zeile 4, übereinanderliegende Felder, Felder ohne Rechte, Klammern) |
+| `elo_mask` | Verschlagwortungsmaske: Art, Reiter, alle Felder mit Typ, Reiter, Zeile, Spalten, Länge, Pflicht und Rechten. Dazu eine Layout-Prüfung (Reiter ohne Namen, Felder vor Zeile 4, übereinanderliegende Felder, Felder ohne Rechte, Klammern) und das zugeordnete ELOwf-Formular. Mit `datei` zusätzlich als lokale JSON-Datei (überschreibt nur eigene Dateien) |
 | `elo_keywords` | Stichwortliste einer Feldgruppe: Anzeigename, Paket, Einträge als Baum, auf Wunsch mit IDs |
 | `elo_user` | Benutzerkonto mit Windows-Anmeldename (für SSO), Mail, letzter Anmeldung und Gruppen; nennt andere Konten mit demselben Windows-Namen. Mit `doppelte` alle doppelten Windows-Namen und Mails im Archiv |
 | `elo_acl` | Rechte (ACL) eines Eintrags. Mit `benutzer` die wirksamen Rechte jeder Person mit Herkunft (direkt, über Gruppe, geerbt, Eigentümer); mit `unterordner` dasselbe für die Ordner eine Ebene darunter und nur die Stellen, an denen sich zwei Personen unterscheiden, z. B. für eine Vertretung |
@@ -155,13 +156,13 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_create_folder` | Ordner anlegen (nur Ordnermasken), warnt bei gleichem Namen und leeren Pflichtfeldern |
 | `elo_create_document` | Lokale Datei als Dokument ablegen (nur Dokumentmasken), höchstens 50 MB |
 | `elo_new_version` | Neue Version. Lehnt eine identische Datei ab, warnt bei anderer Endung |
-| `elo_set_fields` | Indexfelder und Kurzbezeichnung setzen, Vorschau bisher → neu |
+| `elo_set_fields` | Indexfelder, Kurzbezeichnung und Zusatztext (`zusatztext`, ersetzt ganz; leeren nur mit `zusatztextLeeren`) setzen, Vorschau bisher → neu, alter Zusatztext wird gesichert |
 | `elo_start_workflow` | Workflow aus Vorlage starten, warnt, wenn dieselbe Vorlage schon läuft |
 | `elo_task_take` | Gruppenaufgabe annehmen wie „Workflow annehmen“ im Client, mit `zurueckgeben` an die Gruppe aus der Vorlage zurückgeben (oder an eine eigene Gruppe in `an`). Leitet nicht weiter |
 | `elo_forward_task` | Aufgabe weiterleiten. Bei mehreren Nachfolgern Pflichtangabe. Knoten mit Formular nur mit `trotzFormular`, weil Formularprüfungen über die API nicht laufen. `annehmen` nimmt eine Gruppenaufgabe vorher an und gibt sie zurück, wenn das Weiterleiten scheitert |
 | `elo_rename_in_folder` | Ein Wort, z. B. einen falsch geschriebenen Namen, in der Kurzbezeichnung und in benannten Feldern eines Objekts und seiner Unterobjekte ersetzen (Standard zwei Ebenen, höchstens drei und 300 Objekte), dazu im Namen laufender Vorgänge. Nur ganze Wörter (auch mit Umlauten), Referenzen und Dokumentinhalte bleiben unberührt |
 | `elo_workflow_terminate` | Laufende Vorgänge beenden wie „Workflow beenden“ im Client (`terminateWorkFlow`): Sie stehen danach unter den beendeten Workflows, Dokumente bleiben unverändert, gelöscht wird nichts. Auswahl per `ids` oder `benutzer` (alle Vorgänge mit offenen Aufgaben dieses Kontos, `gruppen` Standard an, `vertretungen` Standard aus), beides optional nur einer `vorlage`. Die Vorschau listet je Vorgang Name, aktive Knoten mit Bearbeiter und Vorlage. Höchstens 200 je Aufruf; in einem Archiv ohne „Test“ im Namen höchstens 20 und mit deutlicher Warnung. Sicherung jedes Vorgangs vorher, Ergebnis je Vorgang |
-| `elo_map_set` | Map-Felder eines Objekts oder (mit `workflow`) eines laufenden Vorgangs setzen, Vorschau bisher → neu. Leeren nur ausdrücklich über `leeren`, ein leerer Wert wird abgelehnt. Andere Map-Felder und die Indexfelder bleiben. Lehnt Schlüssel ab, die auf `_PW` enden oder nach Passwort/Token aussehen, ebenso eine andere Groß-/Kleinschreibung eines vorhandenen Schlüssels. Sicherung der alten Werte, zurücklesen. Höchstens 50 Felder je Aufruf |
+| `elo_map_set` | Map-Felder eines Objekts oder (mit `workflow`) eines laufenden Vorgangs setzen, Vorschau bisher → neu. Leeren nur ausdrücklich über `leeren`, ein leerer Wert wird abgelehnt. Andere Map-Felder und die Indexfelder bleiben. Lehnt Schlüssel ab, die auf `_PW` enden oder nach Passwort/Token aussehen, ebenso eine andere Groß-/Kleinschreibung eines vorhandenen Schlüssels. Sicherung der alten Werte, zurücklesen. `leerenMuster` leert alle vorhandenen Felder mit einem Schlüssel-Anfang oder Muster (`IMP_`, `IMP_*_ALT`, mindestens 3 Zeichen ohne Platzhalter), die Vorschau nennt jedes Feld. Höchstens 50 Felder je Aufruf |
 | `elo_feed_post` | Kommentar in den Feed eines Objekts schreiben, unter dem angemeldeten Konto. Die Vorschau meldet denselben Text im Feed und Erwähnungen, die eine Benachrichtigung auslösen. Danach zurücklesen. Ändern und Löschen geht nicht |
 | `elo_color_set` | Farbe eines Objekts setzen, per ID oder Name; mehrdeutige Namen (zwei Farben heißen „Gelb“) werden abgelehnt. Vorschau bisher → neu mit ID und Name, warnt bei laufendem Workflow, Sicherung, zurücklesen |
 | `elo_reference_set` | Verweise anlegen oder entfernen, als Liste von Objekt und Ordner (höchstens 200). Entfernen nimmt nur Verweise weg, nie die Hauptablage; lehnt Ringe (Ordner in sich selbst) und doppelte Verweise ab. Sicherung der entfernten Verweise, zurücklesen |
@@ -177,7 +178,8 @@ Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, 
 |---|---|
 | `elo_workflow_build` | Vorlage aus Bauplan (`bauplan` oder lokale Datei `bauplanDatei`) anlegen oder ersetzen (ID und Name bleiben). Vorschau mit Änderungsliste, Sicherung `.ewf` vorher und nachher |
 | `elo_script_update` | Neue Version eines Dokuments unter `Administration` (ELOas-Regel, IX-Skript, Formularseite …), Vorschau mit Zeilenvergleich, Kodierung bleibt |
-| `elo_script_create` | Neues Dokument unter `Administration`, Maske, Rechte und Typ vom Vorbild |
+| `elo_script_create` | Neues Dokument unter `Administration`, Maske, Rechte und Typ vom Vorbild. Warnt, wenn ein IX-Skript außerhalb von `IndexServer Scripting Base` ohne Verweis dorthin entsteht |
+| `elo_ix_reload` | Indexserver-Skripte neu laden (`reloadScripts`). Mit `pruefen` je Skript vorher und nachher: liegt es unter `IndexServer Scripting Base` oder hat es dort einen Verweis, und ist die aktuelle Version geladen (MD5 aus `getCompiledScripts` gegen die Dokumentversion). Dazu die Zahl geladener Skripte vorher/nachher und Skripte, die nachher fehlen |
 | `elo_mask_create` | Neue Verschlagwortungsmaske als Kopie einer vorhandenen: alle, ausgewählte oder keine Felder (`ohneFelder`), andere Anzeigenamen und Reiter, Dokument-, Ordner- oder reine Suchmaske |
 | `elo_mask_fields` | Felder hinten anhängen (nächste freie Zeile oder direkt unter einem Feld) oder vorhandene ändern: Name, Typ, Länge, Spalte, nur Stichwortliste, Pflicht, Rechte |
 | `elo_mask_tabs` | Reiter benennen, Felder auf einen anderen Reiter oder Platz verschieben, Zeilen lückenlos ordnen |

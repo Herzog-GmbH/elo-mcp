@@ -313,32 +313,60 @@ tool("elo_new_version", "Legt eine lokale Datei als neue Version auf ein vorhand
     });
   }, 2);
 
-tool("elo_set_fields", "Setzt Indexfelder und/oder die Kurzbezeichnung eines Objekts (zweistufig). Prueft Feldnamen, Datum, Zahl, Laenge und Stichwortlisten gegen die Maske.",
-  { objekt: P_OBJ, felder: P_FELDER, name: { type: "string", description: "Neue Kurzbezeichnung (optional)" }, token: P_TOKEN },
+var LIMIT_ZUSATZTEXT = { zeichen: 30000, vorschau: 600 };
+function textKurz(t, n) { t = S(t); return t.length > n ? t.substring(0, n) + " ... (" + t.length + " Zeichen)" : t; }
+
+tool("elo_set_fields", "Setzt Indexfelder, die Kurzbezeichnung und/oder den Zusatztext (desc) eines Objekts (zweistufig). Prueft Feldnamen, Datum, Zahl, Laenge und Stichwortlisten gegen die Maske. " +
+  "zusatztext ersetzt den ganzen Zusatztext (hoechstens " + LIMIT_ZUSATZTEXT.zeichen + " Zeichen), leeren nur mit zusatztextLeeren=true; der alte Zusatztext wird vorher als JSON gesichert.",
+  { objekt: P_OBJ, felder: P_FELDER, name: { type: "string", description: "Neue Kurzbezeichnung (optional)" },
+    zusatztext: { type: "string", description: "Neuer Zusatztext (ersetzt den bisherigen ganz). Zeilenumbrueche als \\n" },
+    zusatztextLeeren: { type: "boolean", description: "true = Zusatztext leeren (statt zusatztext)" },
+    token: P_TOKEN },
   ["objekt"], function (a) {
     return zweiSchritte("elo_set_fields", a, function () {
       var s = sordOf(a.objekt), warn = [];
       if (S(s.getLockName())) fail("Objekt ist gesperrt von " + S(s.getLockName()) + ".");
-      var felder = pruefeFelder(s.getMask(), a.felder, warn), name = trim(a.name);
-      if (!felder.length && !name) fail("Weder felder noch name angegeben.");
+      var felder = pruefeFelder(s.getMask(), a.felder, warn), name = trim(a.name), altDesc = S(s.getDesc()), desc = null;
+      if (a.zusatztextLeeren === true) {
+        if (a.zusatztext !== undefined) fail("Entweder zusatztext oder zusatztextLeeren, nicht beides.");
+        desc = "";
+      } else if (a.zusatztext !== undefined && a.zusatztext !== null) {
+        desc = S(a.zusatztext).replace(/\r\n/g, "\n");
+        if (desc === "") fail("Leerer zusatztext: zum Leeren zusatztextLeeren=true angeben.");
+        if (desc.length > LIMIT_ZUSATZTEXT.zeichen) fail("Zusatztext hoechstens " + LIMIT_ZUSATZTEXT.zeichen + " Zeichen (" + desc.length + ").");
+      }
+      if (desc !== null && desc === altDesc.replace(/\r\n/g, "\n")) desc = null;
+      if (!felder.length && !name && desc === null) fail(a.zusatztext !== undefined || a.zusatztextLeeren ? "Keine Aenderung - der Zusatztext ist schon so." : "Weder felder, name noch zusatztext angegeben.");
       var alt = {}, f = indexFields(s);
       for (var i = 0; i < f.length; i++) alt[f[i].feld] = f[i].wert;
       var aenderung = [];
       for (var i = 0; i < felder.length; i++) if (S(alt[felder[i].key] || "") !== felder[i].wert) aenderung.push(felder[i]);
-      if (!aenderung.length && (!name || name === S(s.getName()))) fail("Keine Aenderung - alle Werte sind schon so.");
-      var v = { aktion: "Indexfelder setzen", objekt: S(s.getName()) + " [" + S(s.getId()) + "]", maske: S(s.getMaskName()), felder: felderVorschau(aenderung, alt) };
+      if (!aenderung.length && (!name || name === S(s.getName())) && desc === null) fail("Keine Aenderung - alle Werte sind schon so.");
+      var v = { aktion: "Indexfelder setzen", objekt: S(s.getName()) + " [" + S(s.getId()) + "]", maske: S(s.getMaskName()) };
+      if (aenderung.length) v.felder = felderVorschau(aenderung, alt);
       if (name && name !== S(s.getName())) v.name = { bisher: S(s.getName()), neu: name };
-      return { vorschau: v, warnungen: warn, fp: fingerprintSord(s), sord: s, felder: aenderung, name: name };
+      if (desc !== null) {
+        v.zusatztext = { bisher: altDesc ? textKurz(altDesc, LIMIT_ZUSATZTEXT.vorschau) : "(leer)", neu: desc ? textKurz(desc, LIMIT_ZUSATZTEXT.vorschau) : "(leer)" };
+        if (!desc) warn.push("Der Zusatztext wird geleert (" + altDesc.length + " Zeichen).");
+        else if (altDesc) warn.push("Der bisherige Zusatztext (" + altDesc.length + " Zeichen) wird ganz ersetzt, nicht ergaenzt.");
+      }
+      return { vorschau: v, warnungen: warn, fp: fingerprintSord(s) + "|desc=" + altDesc, sord: s, felder: aenderung, name: name, desc: desc, altDesc: altDesc };
     }, function (p) {
-      var id = S(p.sord.getId());
+      var id = S(p.sord.getId()), sicherung;
+      if (p.desc !== null) sicherung = jsonSichern("zusatztext-" + id, { id: id, name: S(p.sord.getName()), zusatztextVorher: p.altDesc });
       var s = ELO.ix().checkoutSord(id, IXC.EditInfoC.mbSord, IXC.LockC.YES).getSord();
       try {
         if (p.name) s.setName(p.name);
         setzeFelder(s, p.felder);
+        if (p.desc !== null) s.setDesc(p.desc);
         ELO.ix().checkinSord(s, IXC.SordC.mbAll, IXC.LockC.YES);
       } catch (e) { unlockSord(id); throw e; }
-      var n = sordOf(id);
-      return { id: id, name: S(n.getName()), felder: indexFields(n) };
+      var n = sordOf(id), r = { id: id, name: S(n.getName()), felder: indexFields(n) };
+      if (p.desc !== null) {
+        var ist = S(n.getDesc()).replace(/\r\n/g, "\n");
+        r.zusatztext = { jetzt: ist ? textKurz(ist, LIMIT_ZUSATZTEXT.vorschau) : "(leer)", rueckgelesen: ist === p.desc ? "ok, wie geplant" : "ABWEICHUNG", sicherungVorher: sicherung };
+      }
+      return r;
     });
   }, 2);
 

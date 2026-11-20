@@ -1,5 +1,17 @@
 # Änderungen
 
+## 0.16.0 – 2026-11-20
+
+- **Wege, die bisher nur Einmal-Skripte konnten** (Anlass: Ablage mit Erkennung in einem Testarchiv; IX-Skript einspielen und neu laden, Bestand zählen, lange Trefferlisten, Zusatztext, Map-Felder zurücksetzen, Maskenkopie für einen Formular-Baukasten). Zwei neue Werkzeuge (jetzt 62), vier erweitert:
+  - `elo_ix_reload` (Stufe 3, neu): `reloadScripts` zweistufig. `getCompiledScripts` liefert je Skript-ID die MD5 der geladenen Fassung; sie ist gleich der MD5 der aktuellen Dokumentversion. Damit zeigt die Vorschau je Skript in `pruefen` (bis 20), ob es geladen ist, in der aktuellen oder einer älteren Fassung, und ob es unter `Administration/IndexServer Scripting Base` liegt oder dort einen Verweis hat. Das Ergebnis zeigt dasselbe nach dem Neuladen, die Zahl der geladenen Skripte vorher/nachher und Skripte, die vorher geladen waren und danach fehlen (Kompilier- oder Include-Fehler). Außerhalb eines Testarchivs eine deutliche Warnung. `elo_script_update` und `elo_script_create` verweisen danach auf `elo_ix_reload`; `elo_script_create` warnt bei einem IX-Skript ohne Ort unter `IndexServer Scripting Base`.
+  - `elo_count` (Stufe 1, neu): Gesamtzahl über eine Zählabfrage (`FindOptions.evalCount`), auch für eine ganze Maske. Mit `gruppe` (ein oder zwei Felder) und `gefuellt` (bis drei Felder) liest es die Treffer in Seiten zu 200 mit 200 ms Pause, höchstens 5000; größere Mengen lehnt die Zählabfrage vorher ab. Gelöschte Objekte zählen nicht, leere Werte erscheinen als `(leer)`. Ausgegeben werden nur Zahlen und die Gruppenwerte.
+  - `elo_find_by_fields`: `ab` blättert (Startindex, bis 5000, `naechsteSeite` nennt den nächsten Wert), `gesamt` zählt alle Treffer, `spalten` grenzt die Indexfelder ein, `mapFelder` liest bis zu 10 Map-Felder je Treffer (eine Abfrage je Treffer, Passwort-/Token-Schlüssel als `***`).
+  - `elo_set_fields`: `zusatztext` ersetzt den Zusatztext (bis 30000 Zeichen), `zusatztextLeeren` leert ihn. Vorschau bisher → neu, der alte Text wird vorher als JSON gesichert, danach zurückgelesen.
+  - `elo_map_set`: `leerenMuster` leert alle vorhandenen Felder mit einem Schlüssel-Anfang oder Muster mit `*` und `?` (mindestens 3 Zeichen ohne Platzhalter). Die Vorschau nennt jedes getroffene Feld mit bisherigem Wert; Passwort-/Token-Felder bleiben und werden genannt. Kommt seit der Vorschau ein passendes Feld dazu, wird abgelehnt.
+  - `elo_mask`: zeigt das ELOwf-Formular der Maske (Profiloption `ELOwf.maskforms`) und schreibt mit `datei` das Ergebnis als lokale JSON-Datei (Maskenkopie für eigene Werkzeuge ohne Suchen im Archiv); eine vorhandene Datei wird nur überschrieben, wenn sie selbst von `elo_mask` stammt.
+- In [docs/FALLEN.md](docs/FALLEN.md) beschrieben: Ladestand der IX-Skripte über `getCompiledScripts`, Blättern mit `findNextSords`, Zählabfrage.
+- Offline-Test um IX-Neuladen, Zusatztext, Map-Muster, Blättern, Zählen und Maskendatei erweitert (311/500/506 Prüfungen). Live in einem Testarchiv: Ladestand vor dem Neuladen, Blättern über Seitengrenzen gegen die Gesamtliste, Zählen und Gruppieren (879 Objekte, 5 Seiten), Maskendatei gegen eine von Hand gepflegte Kopie, Vorschauen von Zusatztext und Map.
+
 ## 0.15.0 – 2026-11-20
 
 - **Wiedervorlagen**, drei neue Werkzeuge in `src/elo-mcp-wiedervorlagen.js` (jetzt 60). Anlass: Beim Aufräumen von Testaufgaben zählte der Client eine Aufgabe mehr, als der Server lesen und beenden konnte; Wiedervorlagen kannte er bisher gar nicht.

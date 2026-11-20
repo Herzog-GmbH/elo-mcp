@@ -314,13 +314,54 @@ function mapZiel(a) {
            vorschau: { aktion: "Map-Felder setzen", objekt: S(s.getName()) + " [" + id + "]", pfad: pathOf(s), maske: S(s.getMaskName()) } };
 }
 
+/* leerenMuster: Schluessel-Anfang ("IMP_") oder Muster mit * und ? wie der filter von elo_map, aufgeloest gegen die vorhandene Map.
+   Ohne ELO. Liefert die gefundenen Schluessel (ohne die schon in felder/leeren genannten) und was uebersprungen wurde. */
+function mapMusterLeeren(muster, alt, felder, leeren) {
+  if (muster === undefined || muster === null) return null;
+  if (typeof muster === "string") muster = [muster];
+  if (!(muster instanceof Array) || !muster.length) fail("leerenMuster: Schluessel-Anfang oder Muster (auch als Liste) erwartet.");
+  var liste = [], i, k;
+  for (i = 0; i < muster.length; i++) {
+    var t = trim(muster[i]);
+    if (!t) fail("leerenMuster: leerer Eintrag.");
+    if (t.replace(/[*?]/g, "").length < 3) fail("leerenMuster '" + t + "' ist zu breit: mindestens 3 Zeichen ohne * und ?.");
+    liste.push(t);
+  }
+  var passt = mapFilter(liste), genannt = {}, keys = [], geheim = [], doppelt = [], alle = [];
+  for (k in (felder || {})) if (hat(felder, k)) genannt[S(k).toUpperCase()] = true;
+  var ll = typeof leeren === "string" ? [leeren] : (leeren || []);
+  for (i = 0; i < ll.length; i++) genannt[S(ll[i]).toUpperCase()] = true;
+  for (k in alt) if (hat(alt, k)) alle.push(k);
+  alle.sort();
+  for (i = 0; i < alle.length; i++) {
+    k = alle[i];
+    if (!passt(k)) continue;
+    if (mapGeheim(k)) geheim.push(k);
+    else if (hat(genannt, k.toUpperCase())) doppelt.push(k);
+    else keys.push(k);
+  }
+  return { muster: liste, keys: keys, geheim: geheim, doppelt: doppelt };
+}
+
 function mapPlan(a) {
-  var werte = mapEingabe(a.felder, a.leeren), z = mapZiel(a);
-  var r = mapAenderungen(mapLesen(z.domain, z.id), werte);
-  if (!r.schritte.length) fail("Keine Aenderung: " + r.warn.join(" "));
+  var z = mapZiel(a), alt = mapLesen(z.domain, z.id), m = mapMusterLeeren(a.leerenMuster, alt, a.felder, a.leeren), mw = [];
+  var leeren = a.leeren;
+  if (m) {
+    if (!m.keys.length && !m.doppelt.length && (a.felder === undefined || a.felder === null) && (a.leeren === undefined || a.leeren === null))
+      fail("leerenMuster " + m.muster.join(", ") + " trifft kein Feld dieser Map" + (m.geheim.length ? " (nur Passwort-/Token-Felder, die bleiben)" : "") + ".");
+    leeren = (typeof a.leeren === "string" ? [a.leeren] : (a.leeren || [])).concat(m.keys);
+    if (leeren.length + (a.felder ? Object.keys(a.felder).length : 0) > LIMIT_MAP.setzen)
+      fail("leerenMuster trifft " + m.keys.length + " Felder; zusammen hoechstens " + LIMIT_MAP.setzen + " je Aufruf. Muster enger fassen oder in Teilen leeren.");
+    if (m.geheim.length) mw.push("Nicht geleert (sieht nach Passwort/Token aus): " + m.geheim.join(", ") + ".");
+    if (!m.keys.length && !m.doppelt.length) mw.push("leerenMuster " + m.muster.join(", ") + " trifft kein Feld.");
+  }
+  var werte = mapEingabe(a.felder, leeren);
+  var r = mapAenderungen(alt, werte);
+  if (!r.schritte.length) fail("Keine Aenderung: " + mw.concat(r.warn).join(" "));
   z.vorschau.felder = mapVorschau(r.schritte);
-  return { id: z.id, objId: z.objId, domain: z.domain, bereich: z.bereich, name: z.name, pfad: z.pfad, schritte: r.schritte, warn: z.warn.concat(r.warn),
-           fp: z.fp + "|" + r.fp, vorschau: z.vorschau };
+  if (m) z.vorschau.leerenMuster = { muster: m.muster, trifft: m.keys.concat(m.doppelt).sort(), anzahl: m.keys.length + m.doppelt.length };
+  return { id: z.id, objId: z.objId, domain: z.domain, bereich: z.bereich, name: z.name, pfad: z.pfad, schritte: r.schritte, warn: z.warn.concat(mw, r.warn),
+           fp: z.fp + "|" + r.fp + (m ? "|muster=" + m.keys.join(",") : ""), vorschau: z.vorschau };
 }
 
 /* werte: {Schluessel: Wert oder null (gab es nicht)} */
@@ -335,11 +376,13 @@ tool("elo_map_set",
   "Setzt Map-Felder eines Objekts oder eines laufenden Vorgangs (zweistufig: Vorschau bisher/neu, dann mit token ausfuehren; Sicherung der alten Werte, danach zuruecklesen). " +
   "felder: {\"SCHLUESSEL\": \"Wert\"}. Ein Feld leeren geht nur ausdruecklich ueber leeren=[\"SCHLUESSEL\"], ein leerer Wert in felder wird abgelehnt. " +
   "Andere Map-Felder und die Indexfelder bleiben unberuehrt (Indexfelder: elo_set_fields). Schluessel, die auf _PW enden oder nach Passwort/Token aussehen, werden abgelehnt. " +
+  "leerenMuster leert alle vorhandenen Felder, deren Schluessel so beginnt (\"IMP_\") oder zum Muster mit * und ? passt (wie filter bei elo_map); die Vorschau nennt jedes getroffene Feld mit bisherigem Wert. " +
   "Mit workflow statt objekt die Map des laufenden Vorgangs (wie elo_map mit workflow); beendete Vorgaenge nicht. Hoechstens " + LIMIT_MAP.setzen + " Felder je Aufruf.",
   { objekt: P_OBJ,
     workflow: { type: "string", description: "Statt objekt: Workflow-ID eines laufenden Vorgangs (aus elo_workflows_of_object oder elo_my_tasks); setzt dessen Map" },
     felder: { type: "object", additionalProperties: { type: "string" }, description: "Schluessel -> Wert, z. B. {\"BELEG_STATUS\": \"2\"}. Schluessel genau so schreiben, wie elo_map ihn zeigt" },
     leeren: { type: "array", items: { type: "string" }, description: "Schluessel, deren Wert geleert werden soll" },
+    leerenMuster: { type: "array", items: { type: "string" }, description: "Alle vorhandenen Felder leeren, deren Schluessel so beginnt (z. B. \"IMP_STATUS\") oder zum Muster passt (\"IMP_*_ALT\"); mindestens 3 Zeichen ohne * und ?, Gross-/Kleinschreibung egal" },
     token: P_TOKEN },
   [], function (a) {
     return zweiSchritte("elo_map_set", a, function () {

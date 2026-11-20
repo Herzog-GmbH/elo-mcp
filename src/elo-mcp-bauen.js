@@ -444,7 +444,7 @@ function zeilenDiff(alt, neu) {
 function nachArbeit(pfad) {
   if (/ELOas Base/.test(pfad)) return "ELOas-Regel neu laden (ELOas-Statusseite).";
   if (/ELOwf Base\/Forms/.test(pfad)) return "Formulardesigner 'Aktualisieren'.";
-  if (/IndexServer Scripting Base|Business Solutions/.test(pfad)) return "IX-Skripte neu laden und danach die Statusseite des Indexservers pruefen: Skript-Motor 'Running'.";
+  if (/IndexServer Scripting Base|Business Solutions/.test(pfad)) return "IX-Skripte neu laden: elo_ix_reload mit pruefen = [dieses Objekt] (zeigt vorher und nachher, ob die neue Fassung geladen ist).";
   return "";
 }
 
@@ -535,6 +535,7 @@ tool("elo_script_create",
       if (chk.fehler.length) fail(chk.art + " fehlerhaft, nichts angelegt:\n- " + chk.fehler.join("\n- "));
       warn = warn.concat(chk.warn);
       if (/IndexServer Scripting Base\/_ALL\/(?!business_solutions)/.test(opfad + "/")) warn.push("Direkt unter IndexServer Scripting Base/_ALL werden Includes aus Business-Solutions-Paketen nicht aufgeloest, und ein nicht aufloesbarer Include stoppt den ganzen Skript-Motor. Eigene Skripte besser in ein Paket unter Business Solutions Custom.");
+      if (/IndexServer Scripting Base/.test(opfad) && !ixUnterBasis(opfad)) warn.push("Der Indexserver laedt nur, was unter " + IX_BASIS + " liegt oder dort einen Verweis hat. Nach dem Anlegen den Verweis setzen (elo_reference_set, ueblich nach " + IX_BASIS + "/_ALL/business_solutions), dann elo_ix_reload.");
       var na = nachArbeit(opfad); if (na) warn.push("Danach: " + na);
       var kommentar = trim(a.kommentar) || "angelegt ueber ELO-MCP"; if (kommentar.length > 64) fail("Versionskommentar hoechstens 64 Zeichen.");
       return { vorschau: { aktion: "Skript/Regel/Formular anlegen", in: opfad + " [" + S(o.getId()) + "]", name: name, endung: ext, art: chk.art,
@@ -553,5 +554,85 @@ tool("elo_script_create",
         doc = ELO.ix().checkinDocEnd(s, IXC.SordC.mbAll, doc, IXC.LockC.NO);
         return { id: S(doc.getObjId()), name: p.name, danach: nachArbeit(pathOf(p.ordner) + "/" + S(p.ordner.getName())) };
       } finally { f["delete"](); }
+    });
+  }, 3);
+
+/* ---------- IX-Skripte neu laden ---------- */
+
+/* getCompiledScripts liefert je Objekt-ID die MD5 der Fassung, die der Skript-Motor gerade geladen hat. Sie ist gleich
+   der MD5 der aktuellen Dokumentversion; daran sieht man vorher und nachher, ob eine neue Fassung wirklich geladen ist. */
+var IX_BASIS = "Administration/IndexServer Scripting Base";
+var LIMIT_IX = { pruefen: 20, namen: 10 };
+
+function ixUnterBasis(pfad) { pfad = S(pfad); return pfad === IX_BASIS || pfad.indexOf(IX_BASIS + "/") === 0; }
+
+function ixKompiliert() {
+  var m = ELO.ix().getCompiledScripts(), out = {}, n = 0, it = m ? m.entrySet().iterator() : null;
+  while (it && it.hasNext()) { var e = it.next(); out[S(e.getKey())] = S(e.getValue()).toUpperCase(); n++; }
+  return { md5: out, anzahl: n };
+}
+
+function ixSkriptLesen(obj) {
+  var s = sordOf(obj);
+  if (isFolder(s)) fail(S(s.getName()) + " [" + S(s.getId()) + "] ist ein Ordner, kein Skript.");
+  var orte = ablageOrte(s), alle = [orte.haupt].concat(orte.verweise), ueber = [], akt = null, v = versionsOf(S(s.getId()));
+  for (var i = 0; i < alle.length; i++) if (ixUnterBasis(alle[i].pfad)) ueber.push((i === 0 ? "Hauptablage " : "Verweis ") + alle[i].pfad);
+  for (var j = 0; j < v.docs.length; j++) if (v.docs[j].isWorkVersion()) akt = v.docs[j];
+  return { id: S(s.getId()), name: S(s.getName()), hauptablage: orte.haupt.pfad, ueber: ueber,
+           md5: akt ? S(akt.getMd5()).toUpperCase() : "", stand: akt ? S(akt.getCreateDateIso()) : "" };
+}
+
+function ixStand(sk, komp) {
+  var g = hat(komp.md5, sk.id) ? komp.md5[sk.id] : null;
+  if (g === null) return "nicht geladen";
+  return g === sk.md5 ? "aktuell geladen" : "aeltere Fassung geladen";
+}
+
+tool("elo_ix_reload",
+  "Laedt die Indexserver-Skripte neu (reloadScripts, wie 'Skripte neu laden' auf der Statusseite des Indexservers), zweistufig. " +
+  "Mit pruefen (Skriptdokumente, hoechstens " + LIMIT_IX.pruefen + ") zeigt die Vorschau je Skript, ob es unter " + IX_BASIS + " liegt oder dort einen Verweis hat (sonst laedt der Indexserver es nie) " +
+  "und ob gerade die aktuelle Version geladen ist (MD5 aus getCompiledScripts gegen die Dokumentversion). Nach dem Neuladen dasselbe noch einmal, dazu die Zahl der geladenen Skripte vorher/nachher " +
+  "und Skripte, die vorher geladen waren und nachher fehlen (meist Kompilierfehler, Grund im IX-Log). Aendert keine Dokumente. Nur mit -Bauen.",
+  { pruefen: { type: "array", items: { type: "string" }, description: "Skriptdokumente (ID, GUID oder Pfad), deren Ladestand vorher und nachher gezeigt wird, z. B. das gerade mit elo_script_update geaenderte" },
+    token: P_TOKEN },
+  [], function (a) {
+    bauenPruefen();
+    return zweiSchritte("elo_ix_reload", a, function () {
+      var liste = a.pruefen || [], sk = [], warn = [], fp = [], gesehen = {};
+      if (!(liste instanceof Array)) fail("pruefen ist eine Liste.");
+      if (liste.length > LIMIT_IX.pruefen) fail("Hoechstens " + LIMIT_IX.pruefen + " Skripte in pruefen.");
+      var komp = ixKompiliert();
+      for (var i = 0; i < liste.length; i++) {
+        var x = ixSkriptLesen(liste[i]);
+        if (hat(gesehen, x.id)) continue;
+        gesehen[x.id] = true;
+        x.vorher = ixStand(x, komp);
+        if (!x.ueber.length) warn.push(x.name + " [" + x.id + "] liegt nicht unter " + IX_BASIS + " und hat dort keinen Verweis: der Indexserver laedt es auch nach dem Neuladen nicht. " +
+                                       "Erst Verweis anlegen (elo_reference_set, ueblich nach " + IX_BASIS + "/_ALL/business_solutions).");
+        else if (x.vorher === "aktuell geladen") warn.push(x.name + " [" + x.id + "] ist schon in der aktuellen Version geladen.");
+        sk.push(x); fp.push(x.id + ":" + x.md5);
+      }
+      if (!sk.length) warn.push("Ohne pruefen zeigt das Ergebnis nur die Gesamtzahl; ob eine bestimmte Fassung geladen ist, sieht man nur mit pruefen.");
+      if (!testArchiv()) warn.unshift("ACHTUNG: Archiv '" + (ARCHIV_NAME || "ohne Namen") + "' ist kein Testarchiv (Produktiv). Waehrend des Neuladens koennen registrierte Funktionen, Aktionen und Sidebar-Aufrufe kurz scheitern; " +
+                                      "stoppt ein fehlerhafter Include den Skript-Motor, fallen alle IX-Skripte aus, bis der Fehler behoben und neu geladen ist.");
+      return { vorschau: { aktion: "Indexserver-Skripte neu laden", geladenJetzt: komp.anzahl,
+                           skripte: sk.map(function (x) { return { skript: x.name + " [" + x.id + "]", hauptablage: x.hauptablage, geladenUeber: x.ueber.length ? x.ueber : "KEIN Ort unter " + IX_BASIS,
+                                                                   aktuelleVersion: x.stand + ", MD5 " + x.md5, jetzt: x.vorher }; }) },
+               warnungen: warn, fp: fp.join(";"), skripte: sk, vorher: komp };
+    }, function (p) {
+      var t0 = java.lang.System.currentTimeMillis();
+      ELO.ix().reloadScripts();
+      var dauer = java.lang.System.currentTimeMillis() - t0, nach = ixKompiliert(), fehlen = [], neu = 0, k;
+      for (k in p.vorher.md5) if (!hat(nach.md5, k)) fehlen.push(k);
+      for (k in nach.md5) if (!hat(p.vorher.md5, k) || p.vorher.md5[k] !== nach.md5[k]) neu++;
+      var fehltNamen = fehlen.slice(0, LIMIT_IX.namen).map(function (id) { try { return S(sordOf(id).getName()) + " [" + id + "]"; } catch (e) { return "[" + id + "]"; } });
+      if (fehlen.length > LIMIT_IX.namen) fehltNamen.push("... und " + (fehlen.length - LIMIT_IX.namen) + " weitere");
+      var skripte = p.skripte.map(function (x) { var st = ixStand(x, nach); return { skript: x.name + " [" + x.id + "]", vorher: x.vorher, nachher: st, ok: st === "aktuell geladen" }; });
+      var schlecht = skripte.filter(function (x) { return !x.ok; }).length;
+      return { neuGeladen: true, dauerMs: Number(dauer), geladenVorher: p.vorher.anzahl, geladenNachher: nach.anzahl, geaendertOderNeu: neu,
+               fehlenNachher: fehltNamen.length ? fehltNamen : undefined, skripte: skripte.length ? skripte : undefined,
+               ergebnis: fehlen.length || schlecht ? "PRUEFEN: " + (schlecht ? schlecht + " Skript(e) nicht in der aktuellen Version geladen. " : "") + (fehlen.length ? fehlen.length + " vorher geladene Skript(e) fehlen. " : "") +
+                                                     "Grund steht im IX-Log (Kompilier- oder Include-Fehler)." : "ok",
+               hinweis: "Formulare und ELOas laden getrennt: elo_form_reload bzw. ELOas-Statusseite." };
     });
   }, 3);

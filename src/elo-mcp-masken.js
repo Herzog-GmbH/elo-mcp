@@ -605,13 +605,58 @@ function artSetzen(m, art, suchmaske) {
 
 /* ---------- Werkzeuge ---------- */
 
+/* ELOwf: Formular je Maske steht in der Profiloption ELOwf.maskforms (Benutzer ALL) als "(GUID):app(seite1,seite2)", getrennt durch das Absatzzeichen. */
+function maskFormulare(guid) {
+  var up = new IXC.UserProfile(); up.setUserId(IXC.UserProfileC.USERID_ALL);
+  var o = ELO.ix().checkoutUserProfile(up, IXC.LockC.NO).getOptions() || [], wert = "", out = [];
+  for (var i = 0; i < o.length; i++) if (S(o[i].getKey()) === "ELOwf.maskforms") wert = S(o[i].getValue());
+  return maskFormulareLesen(wert, guid);
+}
+function maskFormulareLesen(wert, guid) {
+  var teile = S(wert).split(ELO.PILCROW), out = [], g = S(guid).toUpperCase();
+  for (var i = 0; i < teile.length; i++) {
+    var m = /^\s*(\([0-9A-Fa-f\-]+\)):([^(]+)\(([^)]*)\)\s*$/.exec(teile[i]);
+    if (m && m[1].toUpperCase() === g) out.push({ formular: m[2], seiten: m[3] ? m[3].split(",") : [], eintrag: m[2] + "(" + m[3] + ")" });
+  }
+  return out;
+}
+
+/* Ergebnis von elo_mask als lokale JSON-Datei. Ueberschreibt nur eine Datei, die selbst von elo_mask stammt. */
+function maskeDateiSchreiben(pfad, inhalt) {
+  pfad = trim(pfad);
+  if (!/\.json$/i.test(pfad)) fail("datei: Pfad einer .json-Datei angeben.");
+  var f = new java.io.File(pfad);
+  if (!f.isAbsolute()) fail("datei: absoluten Pfad angeben.");
+  var ordner = f.getAbsoluteFile().getParentFile();
+  if (!ordner || !ordner.isDirectory()) fail("datei: Ordner " + S(ordner) + " gibt es nicht.");
+  if (f.exists()) {
+    var alt = "";
+    try { alt = S(new java.lang.String(java.nio.file.Files.readAllBytes(f.toPath()), "UTF-8")); } catch (e) {}
+    var ok = false;
+    try { ok = JSON.parse(alt.replace(/^\ufeff/, "")).quelle === "elo_mask"; } catch (e2) {}
+    if (!ok) fail("datei " + pfad + " gibt es schon und stammt nicht von elo_mask - wird nicht ueberschrieben.");
+  }
+  var w = new java.io.OutputStreamWriter(new java.io.FileOutputStream(f), "UTF-8");
+  try { w.write(JSON.stringify(inhalt, null, 1)); } finally { w.close(); }
+  return S(f.getAbsolutePath());
+}
+
 tool("elo_mask",
-  "Liest eine Verschlagwortungsmaske: Art, Reiter samt Namen, alle Felder in Maskenreihenfolge mit Typ, Reiter, Zeile, Spalten (Beschriftung/Eingabe), Laenge, nur Stichwortliste, Pflicht und Rechten. Dazu eine Layout-Pruefung: Reiter ohne Namen (erscheint als 'Index<n>'), Felder auf Reiter 0 vor Zeile 4, uebereinanderliegende Felder, Felder ohne Rechte, Klammern in Anzeigenamen, Luecken.",
-  { maske: { type: "string", description: "Maskenname oder -ID, z. B. 'Rechnung' oder '42'" } },
+  "Liest eine Verschlagwortungsmaske: Art, Reiter samt Namen, alle Felder in Maskenreihenfolge mit Typ, Reiter, Zeile, Spalten (Beschriftung/Eingabe), Laenge, nur Stichwortliste, Pflicht und Rechten. Dazu eine Layout-Pruefung: Reiter ohne Namen (erscheint als 'Index<n>'), Felder auf Reiter 0 vor Zeile 4, uebereinanderliegende Felder, Felder ohne Rechte, Klammern in Anzeigenamen, Luecken. " +
+  "Dazu das ELOwf-Formular, das der Maske zugeordnet ist (Profiloption ELOwf.maskforms). Mit datei wird das Ergebnis zusaetzlich als lokale JSON-Datei gespeichert (Maskenkopie fuer eigene Werkzeuge, ohne Suchen im Archiv).",
+  { maske: { type: "string", description: "Maskenname oder -ID, z. B. 'Rechnung' oder '42'" },
+    datei: { type: "string", description: "Optional: absoluter Pfad einer .json-Datei; eine vorhandene Datei wird nur ueberschrieben, wenn sie von elo_mask stammt" } },
   ["maske"], function (a) {
     var m = maskeHolen(a.maske, false), res = maskeBeschreiben(m);
     var lp = layoutPruefen(reiterNamen(m.getText()), alsListe(m.getLines()), {}, true);
     res.pruefung = { maengel: lp.fehler, hinweise: lp.hinweise };
+    try { var fo = maskFormulare(S(m.getGuid())); res.formular = fo.length ? fo : "keins (ELOwf.maskforms)"; }
+    catch (e) { if (isSessionError(e)) throw e; res.formular = "nicht lesbar: " + errText(e); }
+    if (trim(a.datei)) {
+      var inhalt = { quelle: "elo_mask", archiv: ARCHIV_NAME || undefined, gelesen: S(new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").format(new java.util.Date())) };
+      for (var k in res) inhalt[k] = res[k];
+      res.datei = maskeDateiSchreiben(a.datei, inhalt);
+    }
     return res;
   });
 

@@ -20,7 +20,7 @@ pruefe("initialize: Hinweise nennen die Stufen", init.result.instructions.indexO
 
 var liste = handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }).result.tools, namen = {};
 for (var i = 0; i < liste.length; i++) namen[liste[i].name] = true;
-var erwartet = 26 + (SCHREIBEN_ERLAUBT ? 16 : 0) + (BAUEN_ERLAUBT ? 18 : 0);
+var erwartet = 27 + (SCHREIBEN_ERLAUBT ? 16 : 0) + (BAUEN_ERLAUBT ? 19 : 0);
 pruefe("tools/list: " + erwartet + " Werkzeuge bei Stufen " + stufenText(), liste.length === erwartet, liste.length);
 pruefe("tools/list: Schreibwerkzeug nur mit -Schreiben", !!namen.elo_set_fields === SCHREIBEN_ERLAUBT);
 pruefe("tools/list: Bauwerkzeug nur mit -Bauen", !!namen.elo_workflow_build === BAUEN_ERLAUBT);
@@ -1397,6 +1397,288 @@ try {
 } finally {
   ELO.ix = wvIxEcht; ELO.connect = wvConnEcht; protokoll = wvProtEcht; jsonSichern = wvSichEcht; warte = wvWarteEcht;
 }
+
+/* ---------- IX-Skripte neu laden (elo_ix_reload) gegen einen Skript-Motor im Speicher ---------- */
+
+var ixIxEcht = ELO.ix, ixLesenEcht = ixSkriptLesen, ixProtEcht = protokoll, ixTestEcht = testArchiv;
+var IXK = {}, ixReloads = 0, ixNachReload = null, ixTest = true;
+function ixMap() { var m = new java.util.HashMap(); for (var k in IXK) m.put(java.lang.Integer.valueOf(parseInt(k, 10)), IXK[k]); return m; }
+var IXS = {
+  "501": { id: "501", name: "paket.neu", hauptablage: "Administration/Business Solutions Custom/paket/IndexServer Scripting Base",
+           ueber: ["Verweis " + IX_BASIS + "/_ALL/business_solutions"], md5: "AAA2", stand: "20261120203600" },
+  "502": { id: "502", name: "paket.ohneVerweis", hauptablage: "Administration/Business Solutions Custom/paket/IndexServer Scripting Base",
+           ueber: [], md5: "BBB1", stand: "20261120100000" },
+  "503": { id: "503", name: "lib_alt", hauptablage: IX_BASIS + "/_ALL", ueber: ["Hauptablage " + IX_BASIS + "/_ALL"], md5: "CCC1", stand: "20250101000000" }
+};
+function ixNeu() { IXK = { "501": "aaa1", "503": "CCC1", "600": "DDD1" }; ixReloads = 0; ixNachReload = { "501": "AAA2", "503": "CCC1" }; }
+ELO.ix = function () {
+  return { getCompiledScripts: function () { return ixMap(); },
+           reloadScripts: function () { ixReloads++; if (ixNachReload) IXK = ixNachReload; },
+           checkoutSord: function () { var s = new IXC.Sord(); s.setId(600); s.setName("lib_kaputt"); return { getSord: function () { return s; } }; } };
+};
+ixSkriptLesen = function (o) { var x = IXS[S(o)]; if (!x) fail("Objekt nicht gefunden: " + o); return JSON.parse(JSON.stringify(x)); };
+protokoll = function () {};
+testArchiv = function () { return ixTest; };
+try {
+  pruefe("ixUnterBasis: Basis und darunter ja, Paketordner nein", ixUnterBasis(IX_BASIS) && ixUnterBasis(IX_BASIS + "/_ALL/business_solutions") &&
+         !ixUnterBasis("Administration/Business Solutions Custom/paket/IndexServer Scripting Base") && !ixUnterBasis(IX_BASIS + " alt/x"));
+  pruefe("ixStand: aktuell, aeltere Fassung, nicht geladen",
+         ixStand({ id: "1", md5: "X" }, { md5: { "1": "X" } }) === "aktuell geladen" && ixStand({ id: "1", md5: "X" }, { md5: { "1": "Y" } }) === "aeltere Fassung geladen" &&
+         ixStand({ id: "1", md5: "X" }, { md5: {} }) === "nicht geladen");
+  if (BAUEN_ERLAUBT) {
+    ixNeu();
+    var ixV = mpJson(callTool("elo_ix_reload", { pruefen: ["501", "502", "503", "501"] }));
+    pruefe("elo_ix_reload Vorschau: laedt noch nicht neu", ixReloads === 0 && !!ixV.token, JSON.stringify(ixV));
+    pruefe("elo_ix_reload Vorschau: Gesamtzahl und je Skript der Stand (MD5 ohne Gross/Klein)", ixV.vorschau.geladenJetzt === 3 && ixV.vorschau.skripte.length === 3 &&
+           ixV.vorschau.skripte[0].jetzt === "aeltere Fassung geladen" && ixV.vorschau.skripte[1].jetzt === "nicht geladen" && ixV.vorschau.skripte[2].jetzt === "aktuell geladen", JSON.stringify(ixV.vorschau));
+    pruefe("elo_ix_reload Vorschau: warnt bei Skript ohne Ort unter der Basis und bei schon aktuellem", enthaelt(ixV.warnungen, "paket.ohneVerweis [502] liegt nicht unter") &&
+           enthaelt(ixV.warnungen, "lib_alt [503] ist schon in der aktuellen Version geladen") && ixV.vorschau.skripte[1].geladenUeber.indexOf("KEIN Ort") === 0, JSON.stringify(ixV.warnungen));
+    pruefe("elo_ix_reload Vorschau: im Testarchiv keine Produktiv-Warnung", !enthaelt(ixV.warnungen, "ACHTUNG"));
+    var ixE = mpJson(callTool("elo_ix_reload", { pruefen: ["501", "502", "503", "501"], token: ixV.token }));
+    pruefe("elo_ix_reload: einmal neu geladen", ixReloads === 1 && ixE.modus === "ausgefuehrt", JSON.stringify(ixE));
+    var ixR = ixE.ergebnis;
+    pruefe("elo_ix_reload: vorher/nachher je Skript", ixR.skripte[0].nachher === "aktuell geladen" && ixR.skripte[0].ok && ixR.skripte[1].nachher === "nicht geladen" && !ixR.skripte[1].ok, JSON.stringify(ixR.skripte));
+    pruefe("elo_ix_reload: Zahlen und fehlende Skripte mit Namen", ixR.geladenVorher === 3 && ixR.geladenNachher === 2 && ixR.geaendertOderNeu === 1 &&
+           ixR.fehlenNachher.length === 1 && ixR.fehlenNachher[0] === "lib_kaputt [600]", JSON.stringify(ixR));
+    pruefe("elo_ix_reload: Ergebnis PRUEFEN bei Fehlern", /^PRUEFEN: 1 Skript\(e\) nicht .* 1 vorher geladene/.test(ixR.ergebnis), ixR.ergebnis);
+    ixNeu(); ixNachReload = { "501": "AAA2", "503": "CCC1", "600": "DDD1" };
+    var ixV2 = mpJson(callTool("elo_ix_reload", { pruefen: ["501"] }));
+    var ixR2 = mpJson(callTool("elo_ix_reload", { pruefen: ["501"], token: ixV2.token })).ergebnis;
+    pruefe("elo_ix_reload: alles geladen -> ok, keine fehlenden", ixR2.ergebnis === "ok" && ixR2.fehlenNachher === undefined, JSON.stringify(ixR2));
+    ixNeu();
+    var ixV3 = mpJson(callTool("elo_ix_reload", {}));
+    pruefe("elo_ix_reload ohne pruefen: Hinweis, nur Gesamtzahl", ixV3.vorschau.skripte.length === 0 && enthaelt(ixV3.warnungen, "Ohne pruefen"), JSON.stringify(ixV3));
+    var ixV4 = mpJson(callTool("elo_ix_reload", { pruefen: ["501"] }));
+    IXS["501"].md5 = "AAA4";
+    pruefe("elo_ix_reload: Fingerabdruck greift", /geaendert/.test(mpJson(callTool("elo_ix_reload", { pruefen: ["501"], token: ixV4.token })).fehler) && ixReloads === 0);
+    ixTest = false;
+    pruefe("elo_ix_reload: Produktiv-Warnung zuerst", mpJson(callTool("elo_ix_reload", { pruefen: ["501"] })).warnungen[0].indexOf("ACHTUNG") === 0);
+    ixTest = true;
+    var zuViel = []; for (var zi = 0; zi < 21; zi++) zuViel.push("501");
+    pruefe("elo_ix_reload: hoechstens 20 in pruefen", /Hoechstens 20/.test(mpJson(callTool("elo_ix_reload", { pruefen: zuViel })).fehler));
+    pruefe("elo_ix_reload: unbekanntes Skript", /nicht gefunden/.test(mpJson(callTool("elo_ix_reload", { pruefen: ["999"] })).fehler));
+  } else {
+    pruefe("gesperrtes Neuladen der IX-Skripte wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_ix_reload", {})).fehler));
+  }
+} finally {
+  ELO.ix = ixIxEcht; ixSkriptLesen = ixLesenEcht; protokoll = ixProtEcht; testArchiv = ixTestEcht;
+}
+
+/* ---------- Zusatztext (desc) in elo_set_fields gegen ein Objekt im Speicher ---------- */
+
+var ztIxEcht = ELO.ix, ztSichEcht = jsonSichern, ztProtEcht = protokoll, ZT = { desc: "Alter Text\nZeile 2", name: "Beleg A" }, ztGesichert = [], ztCheckins = 0;
+maskObjCache["7"] = { getLines: function () { return []; } }; maskCache["7"] = {};
+function ztSord() { var s = new IXC.Sord(); s.setId(4720); s.setName(ZT.name); s.setType(254); s.setMask(7); s.setMaskName("Beleg"); s.setDesc(ZT.desc); s.setObjKeys([]); return s; }
+ELO.ix = function () {
+  return { checkoutSord: function () { var s = ztSord(); return { getSord: function () { return s; } }; },
+           checkinSord: function (s) { ztCheckins++; ZT.desc = S(s.getDesc()); ZT.name = S(s.getName()); } };
+};
+jsonSichern = function (name, inhalt) { ztGesichert.push({ name: name, inhalt: inhalt }); return "C:\\sicherung\\" + name + ".json"; };
+protokoll = function () {};
+try {
+  if (SCHREIBEN_ERLAUBT) {
+    var ztV = mpJson(callTool("elo_set_fields", { objekt: "4720", zusatztext: "Neuer Text" }));
+    pruefe("elo_set_fields zusatztext: Vorschau bisher/neu, Warnung ersetzt", ztV.vorschau.zusatztext.bisher === "Alter Text\nZeile 2" && ztV.vorschau.zusatztext.neu === "Neuer Text" &&
+           enthaelt(ztV.warnungen, "ganz ersetzt") && ztCheckins === 0 && ztV.vorschau.felder === undefined, JSON.stringify(ztV));
+    var ztE = mpJson(callTool("elo_set_fields", { objekt: "4720", zusatztext: "Neuer Text", token: ztV.token }));
+    pruefe("elo_set_fields zusatztext: geschrieben, zurueckgelesen, alter Text gesichert", ZT.desc === "Neuer Text" && ztE.ergebnis.zusatztext.rueckgelesen === "ok, wie geplant" &&
+           ztGesichert.length === 1 && ztGesichert[0].inhalt.zusatztextVorher === "Alter Text\nZeile 2" && /zusatztext-4720/.test(ztE.ergebnis.zusatztext.sicherungVorher), JSON.stringify(ztE));
+    pruefe("elo_set_fields zusatztext: gleicher Text -> keine Aenderung", /schon so/.test(mpJson(callTool("elo_set_fields", { objekt: "4720", zusatztext: "Neuer Text" })).fehler));
+    pruefe("elo_set_fields zusatztext: leerer Text abgelehnt", /zusatztextLeeren/.test(mpJson(callTool("elo_set_fields", { objekt: "4720", zusatztext: "" })).fehler));
+    pruefe("elo_set_fields: zusatztext und zusatztextLeeren zusammen abgelehnt", /nicht beides/.test(mpJson(callTool("elo_set_fields", { objekt: "4720", zusatztext: "x", zusatztextLeeren: true })).fehler));
+    var ztLang = ""; while (ztLang.length <= 30000) ztLang += "0123456789";
+    pruefe("elo_set_fields zusatztext: zu lang abgelehnt", /hoechstens 30000/.test(mpJson(callTool("elo_set_fields", { objekt: "4720", zusatztext: ztLang })).fehler));
+    var ztL = mpJson(callTool("elo_set_fields", { objekt: "4720", zusatztextLeeren: true }));
+    pruefe("elo_set_fields zusatztextLeeren: Vorschau (leer) mit Warnung", ztL.vorschau.zusatztext.neu === "(leer)" && enthaelt(ztL.warnungen, "geleert"), JSON.stringify(ztL));
+    ZT.desc = "inzwischen geaendert";
+    pruefe("elo_set_fields zusatztext: seit der Vorschau geaendert -> abgelehnt", /geaendert/.test(mpJson(callTool("elo_set_fields", { objekt: "4720", zusatztextLeeren: true, token: ztL.token })).fehler) &&
+           ZT.desc === "inzwischen geaendert");
+    var ztL2 = mpJson(callTool("elo_set_fields", { objekt: "4720", zusatztextLeeren: true }));
+    var ztE2 = mpJson(callTool("elo_set_fields", { objekt: "4720", zusatztextLeeren: true, token: ztL2.token }));
+    pruefe("elo_set_fields zusatztextLeeren: geleert", ZT.desc === "" && ztE2.ergebnis.zusatztext.jetzt === "(leer)" && ztE2.ergebnis.zusatztext.rueckgelesen === "ok, wie geplant", JSON.stringify(ztE2));
+    var ztN = mpJson(callTool("elo_set_fields", { objekt: "4720", name: "Beleg B" }));
+    pruefe("elo_set_fields nur name: kein Zusatztext in der Vorschau", ztN.vorschau.name.neu === "Beleg B" && ztN.vorschau.zusatztext === undefined, JSON.stringify(ztN));
+    pruefe("elo_set_fields ohne Angaben abgelehnt", /Weder felder, name noch zusatztext/.test(mpJson(callTool("elo_set_fields", { objekt: "4720" })).fehler));
+  }
+} finally {
+  ELO.ix = ztIxEcht; jsonSichern = ztSichEcht; protokoll = ztProtEcht; delete maskObjCache["7"]; delete maskCache["7"];
+}
+
+/* ---------- elo_map_set leerenMuster gegen eine Map im Speicher ---------- */
+
+var lmIxEcht = ELO.ix, lmProtEcht = protokoll, lmSichEcht = mapSichern, lmCheckins = 0, LM = {};
+function lmNeu() { LM = { IMP_NACHGEZOGEN: "2026-11-20 10:00|ok", IMP_NAME_ALT: "Alt", imp_hinweis: "x", IMP_TOKEN: "geheim", BELEGART: "Rechnung", ANDERES: "bleibt" }; lmCheckins = 0; }
+ELO.ix = function () {
+  return {
+    checkoutSord: function () { var s = new IXC.Sord(); s.setId(4730); s.setName("Beleg M"); s.setType(254); s.setMaskName("Beleg"); return { getSord: function () { return s; } }; },
+    checkoutMap: function () {
+      var items = [];
+      for (var k in LM) (function (key) { items.push({ getKey: function () { return key; }, getValue: function () { return LM[key]; } }); })(k);
+      return { getItems: function () { return items; } };
+    },
+    checkinMap: function (d, id, objId, arr) { lmCheckins++; for (var i = 0; i < arr.length; i++) { var k = String(arr[i].getKey()), v = String(arr[i].getValue()); if (v === "") delete LM[k]; else LM[k] = v; } }
+  };
+};
+protokoll = function () {};
+mapSichern = function (p, werte, suffix) { return "sicherung" + suffix; };
+try {
+  lmNeu();
+  var lmM = mapMusterLeeren(["IMP_"], LM, null, null);
+  pruefe("mapMusterLeeren: Anfang, Gross/klein egal, Token-Feld uebersprungen", lmM.keys.join(",") === "IMP_NACHGEZOGEN,IMP_NAME_ALT,imp_hinweis" && lmM.geheim.join() === "IMP_TOKEN", JSON.stringify(lmM));
+  pruefe("mapMusterLeeren: Muster mit *", mapMusterLeeren("IMP_*_ALT", LM).keys.join() === "IMP_NAME_ALT");
+  pruefe("mapMusterLeeren: schon in leeren genannt -> nicht doppelt", mapMusterLeeren(["IMP_N"], LM, null, ["IMP_NAME_ALT"]).keys.join() === "IMP_NACHGEZOGEN");
+  pruefe("mapMusterLeeren: zu breit abgelehnt", /zu breit/.test(errText((function () { try { mapMusterLeeren(["*"], LM); } catch (e) { return e; } })())) &&
+         /zu breit/.test(errText((function () { try { mapMusterLeeren(["W*"], LM); } catch (e) { return e; } })())));
+  if (SCHREIBEN_ERLAUBT) {
+    var lmV = mpJson(callTool("elo_map_set", { objekt: "4730", leerenMuster: ["IMP_"] }));
+    pruefe("elo_map_set leerenMuster: Vorschau nennt jedes Feld mit bisherigem Wert", lmV.vorschau.felder.length === 3 && lmV.vorschau.leerenMuster.anzahl === 3 &&
+           lmV.vorschau.felder[0].feld === "IMP_NACHGEZOGEN" && lmV.vorschau.felder[0].bisher === "2026-11-20 10:00|ok" && lmV.vorschau.felder[0].neu === "(leer)" && lmCheckins === 0, JSON.stringify(lmV));
+    pruefe("elo_map_set leerenMuster: Warnung fuer uebersprungenes Token-Feld", enthaelt(lmV.warnungen, "IMP_TOKEN"), JSON.stringify(lmV.warnungen));
+    LM.IMP_NEU = "dazugekommen";
+    pruefe("elo_map_set leerenMuster: neues passendes Feld seit der Vorschau -> abgelehnt", /geaendert/.test(mpJson(callTool("elo_map_set", { objekt: "4730", leerenMuster: ["IMP_"], token: lmV.token })).fehler) && lmCheckins === 0);
+    delete LM.IMP_NEU;
+    var lmV2 = mpJson(callTool("elo_map_set", { objekt: "4730", leerenMuster: ["IMP_"], felder: { BELEGART: "Gutschrift" } }));
+    var lmE = mpJson(callTool("elo_map_set", { objekt: "4730", leerenMuster: ["IMP_"], felder: { BELEGART: "Gutschrift" }, token: lmV2.token }));
+    pruefe("elo_map_set leerenMuster + felder: ausgefuehrt, Rest unberuehrt", lmE.modus === "ausgefuehrt" && lmCheckins === 1 && LM.BELEGART === "Gutschrift" && LM.ANDERES === "bleibt" &&
+           LM.IMP_TOKEN === "geheim" && !LM.IMP_NAME_ALT && !LM.imp_hinweis && lmE.ergebnis.rueckgelesen === "ok, wie geplant", JSON.stringify(lmE) + JSON.stringify(LM));
+    pruefe("elo_map_set leerenMuster: trifft nichts -> abgelehnt", /trifft kein Feld/.test(mpJson(callTool("elo_map_set", { objekt: "4730", leerenMuster: ["XYZ_"] })).fehler));
+    lmNeu(); for (var lmi = 0; lmi < 51; lmi++) LM["VIEL_" + lmi] = "x";
+    pruefe("elo_map_set leerenMuster: mehr als 50 Treffer abgelehnt", /hoechstens 50/.test(mpJson(callTool("elo_map_set", { objekt: "4730", leerenMuster: ["VIEL_"] })).fehler));
+  }
+} finally {
+  ELO.ix = lmIxEcht; protokoll = lmProtEcht; mapSichern = lmSichEcht;
+}
+
+/* ---------- elo_find_by_fields seitenweise mit Map-Spalten gegen eine Suche im Speicher ---------- */
+
+var fsIxEcht = ELO.ix, FS = [], fsAufrufe = [], fsZaehlen = null, fsMapAufrufe = 0;
+maskCache["9"] = { FIRMA: "Firma", TYP: "Typ" };
+for (var fsi = 0; fsi < 120; fsi++) {
+  (function (n) {
+    var s = new IXC.Sord(); s.setId(5000 + n); s.setName("Beleg " + n); s.setType(254); s.setMask(9); s.setMaskName("Lieferantenbeleg");
+    var k1 = new IXC.ObjKey(); k1.setName("FIRMA"); k1.setData(["Muster GmbH"]);
+    var k2 = new IXC.ObjKey(); k2.setName("TYP"); k2.setData([n % 2 ? "Rechnung" : "Vertrag"]);
+    s.setObjKeys([k1, k2]); FS.push(s);
+  })(fsi);
+}
+function fsErg(ab, max) {
+  var teil = FS.slice(ab, ab + max), arr = java.lang.reflect.Array.newInstance(IXC.Sord, teil.length);
+  for (var i = 0; i < teil.length; i++) arr[i] = teil[i];
+  return { getSords: function () { return arr; }, isMoreResults: function () { return ab + max < FS.length; }, getSearchId: function () { return "S1"; },
+           getCount: function () { return FS.length; } };
+}
+ELO.ix = function () {
+  return {
+    findFirstSords: function (fi, max) { fsZaehlen = fi.getFindOptions() ? !!fi.getFindOptions().isEvalCount() : false; fsAufrufe.push("first " + max); return fsErg(0, max); },
+    findNextSords: function (sid, ab, max) { fsAufrufe.push("next " + ab + " " + max); return fsErg(ab, max); },
+    findClose: function () { fsAufrufe.push("close"); },
+    checkoutSord: function () { var s = new IXC.Sord(); s.setId(77); s.setName("Ordner"); s.setType(1); return { getSord: function () { return s; } }; },
+    checkoutMap: function (d, id, keys) {
+      fsMapAufrufe++;
+      var werte = { IMP_NACHGEZOGEN: "2026-11-20|" + id, IMP_API_TOKEN: "geheim" }, items = [];
+      for (var i = 0; keys && i < keys.length; i++) (function (k) { if (werte[k] !== undefined) items.push({ getKey: function () { return k; }, getValue: function () { return werte[k]; } }); })(String(keys[i]));
+      return { getItems: function () { return items; } };
+    }
+  };
+};
+try {
+  var fs1 = mpJson(callTool("elo_find_by_fields", { maske: "Lieferantenbeleg", felder: { FIRMA: "Muster GmbH" }, max: 50 }));
+  pruefe("elo_find_by_fields Seite 1: 50 Treffer, naechsteSeite 50, ohne Zaehlen", fs1.treffer === 50 && fs1.ab === 0 && fs1.mehrVorhanden && fs1.naechsteSeite === 50 &&
+         fs1.gesamt === undefined && fsZaehlen === false && fsAufrufe.join() === "first 50,close", JSON.stringify(fs1).substring(0, 300) + fsAufrufe.join());
+  fsAufrufe = [];
+  var fs3 = mpJson(callTool("elo_find_by_fields", { maske: "Lieferantenbeleg", felder: { FIRMA: "Muster GmbH" }, max: 50, ab: 100, gesamt: true }));
+  pruefe("elo_find_by_fields Seite 3: Rest ab 100, gesamt, keine naechste Seite", fs3.treffer === 20 && fs3.ab === 100 && !fs3.mehrVorhanden && fs3.naechsteSeite === undefined &&
+         fs3.gesamt === 120 && fsZaehlen === true && fs3.ergebnisse[0].name === "Beleg 100" && fsAufrufe.join() === "first 1,next 100 50,close", JSON.stringify(fs3).substring(0, 300) + fsAufrufe.join());
+  var fsM = mpJson(callTool("elo_find_by_fields", { maske: "Lieferantenbeleg", felder: { FIRMA: "Muster GmbH" }, max: 3, spalten: ["typ"], mapFelder: ["IMP_NACHGEZOGEN", "IMP_API_TOKEN", "FEHLT"] }));
+  pruefe("elo_find_by_fields: spalten und mapFelder, Token maskiert, eine Map-Abfrage je Treffer", fsM.ergebnisse.length === 3 && fsM.ergebnisse[1].felder.length === 1 &&
+         fsM.ergebnisse[1].felder[0].feld === "TYP" && fsM.ergebnisse[1].map.IMP_NACHGEZOGEN === "2026-11-20|5001" && fsM.ergebnisse[1].map.IMP_API_TOKEN === "***" &&
+         fsM.ergebnisse[1].map.FEHLT === undefined && fsMapAufrufe === 3, JSON.stringify(fsM));
+  pruefe("elo_find_by_fields: ohne mapFelder keine Map-Abfrage", fsMapAufrufe === 3 && fs1.ergebnisse[0].map === undefined);
+  pruefe("elo_find_by_fields: ab ueber der Grenze abgelehnt", /hoechstens 5000/.test(mpJson(callTool("elo_find_by_fields", { maske: "X", felder: { FIRMA: "Muster" }, ab: 5001 })).fehler));
+  pruefe("elo_find_by_fields: negatives ab abgelehnt", /ab 0/.test(mpJson(callTool("elo_find_by_fields", { maske: "X", felder: { FIRMA: "Muster" }, ab: -1 })).fehler));
+  pruefe("elo_find_by_fields: mapFelder mit Platzhalter abgelehnt", /ohne Platzhalter/.test(mpJson(callTool("elo_find_by_fields", { maske: "X", felder: { FIRMA: "Muster" }, mapFelder: ["IMP_*"] })).fehler));
+  var fsZv = []; for (var fz = 0; fz < 11; fz++) fsZv.push("K" + fz);
+  pruefe("elo_find_by_fields: hoechstens 10 mapFelder", /Hoechstens 10 mapFelder/.test(mpJson(callTool("elo_find_by_fields", { maske: "X", felder: { FIRMA: "Muster" }, mapFelder: fsZv })).fehler));
+  pruefe("elo_find_by_fields: weiterhin keine ganze Maske", /mindestens ein Feld/.test(mpJson(callTool("elo_find_by_fields", { maske: "Lieferantenbeleg", ab: 50 })).fehler));
+} finally {
+  ELO.ix = fsIxEcht; delete maskCache["9"];
+}
+
+/* ---------- elo_count gegen eine Suche im Speicher ---------- */
+
+var bzIxEcht = ELO.ix, BZ = [], bzAufrufe = [], bzZaehlFehlt = false;
+function bzObjekt(n, firma, typ, art, geloescht) {
+  var s = new IXC.Sord(); s.setId(6000 + n); s.setName("B" + n); s.setType(254); s.setDeleted(!!geloescht);
+  var ks = [], werte = { FIRMA: firma, TYP: typ, ART: art };
+  for (var k in werte) { var o = new IXC.ObjKey(); o.setName(k); o.setData(werte[k] === null ? [] : [werte[k]]); ks.push(o); }
+  s.setObjKeys(ks); return s;
+}
+function bzNeu(anzahl) {
+  BZ = []; bzAufrufe = [];
+  for (var i = 0; i < anzahl; i++) BZ.push(bzObjekt(i, i % 3 === 0 ? "Alpha" : "Beta", i % 2 ? "Rechnung" : "Vertrag", i % 4 === 0 ? "neu" : null, false));
+}
+function bzErg(ab, max) {
+  var teil = BZ.slice(ab, ab + max), arr = java.lang.reflect.Array.newInstance(IXC.Sord, teil.length);
+  for (var i = 0; i < teil.length; i++) arr[i] = teil[i];
+  return { getSords: function () { return arr; }, isMoreResults: function () { return ab + max < BZ.length; }, getSearchId: function () { return "Z1"; },
+           getCount: function () { if (bzZaehlFehlt) throw new Error("kein Count"); return BZ.length; } };
+}
+ELO.ix = function () {
+  return { findFirstSords: function (fi, max) { bzAufrufe.push("first " + max); return bzErg(0, max); },
+           findNextSords: function (sid, ab, max) { bzAufrufe.push("next " + ab); return bzErg(ab, max); },
+           findClose: function () { bzAufrufe.push("close"); } };
+};
+var bzWarteEcht = java.lang.Thread;
+try {
+  bzNeu(450);
+  var bz0 = mpJson(callTool("elo_count", { maske: "Beleg" }));
+  pruefe("elo_count ohne gruppe: nur Gesamtzahl, eine Zaehlabfrage", bz0.gesamt === 450 && bz0.gruppen === undefined && bzAufrufe.join() === "first 1,close", JSON.stringify(bz0) + bzAufrufe.join());
+  bzAufrufe = [];
+  var bz1 = mpJson(callTool("elo_count", { maske: "Beleg", gruppe: ["firma", "TYP"], gefuellt: ["ART"] }));
+  var bzA = bz1.gruppen.filter(function (g) { return g.FIRMA === "Beta" && g.TYP === "Rechnung"; })[0];
+  pruefe("elo_count gruppe A x B: Seiten zu 200, alle gelesen", bz1.gezaehlt === 450 && bz1.seiten === 3 && bzAufrufe.join() === "first 1,close,first 200,next 200,next 400,close", JSON.stringify(bz1).substring(0, 200) + bzAufrufe.join());
+  pruefe("elo_count gruppe A x B: vier Gruppen, groesste zuerst, Summe stimmt", bz1.gruppen.length === 4 && bz1.gruppen[0].anzahl >= bz1.gruppen[3].anzahl &&
+         bz1.gruppen.reduce(function (s, g) { return s + g.anzahl; }, 0) === 450 && bzA.anzahl === 150, JSON.stringify(bz1.gruppen));
+  pruefe("elo_count gefuellt: je Gruppe und gesamt", bzA.ART_gefuellt === 0 && bz1.gefuelltGesamt.ART === 113, JSON.stringify(bz1.gefuelltGesamt) + JSON.stringify(bzA));
+  BZ[0].setDeleted(true); BZ[1] = bzObjekt(1, null, "Vertrag", null, false);
+  var bz2 = mpJson(callTool("elo_count", { maske: "Beleg", gruppe: "FIRMA" }));
+  pruefe("elo_count: geloeschte uebersprungen, leere Werte als (leer)", bz2.gezaehlt === 449 && bz2.geloeschtUebersprungen === 1 &&
+         bz2.gruppen.filter(function (g) { return g.FIRMA === "(leer)" && g.anzahl === 1; }).length === 1, JSON.stringify(bz2));
+  bzNeu(5001);
+  pruefe("elo_count: ueber 5000 nur Gesamtzahl, Gruppieren abgelehnt", mpJson(callTool("elo_count", { maske: "Beleg" })).gesamt === 5001 &&
+         /hoechstens 5000/.test(mpJson(callTool("elo_count", { maske: "Beleg", gruppe: ["FIRMA"] })).fehler));
+  bzZaehlFehlt = true;
+  pruefe("elo_count: ohne Trefferzahl abgelehnt", /keine Trefferzahl/.test(mpJson(callTool("elo_count", { maske: "Beleg" })).fehler));
+  bzZaehlFehlt = false;
+  pruefe("elo_count: hoechstens zwei Gruppenfelder", /eine oder zwei/.test(mpJson(callTool("elo_count", { maske: "Beleg", gruppe: ["A", "B", "C"] })).fehler));
+  pruefe("elo_count: hoechstens drei gefuellt-Felder", /hoechstens drei/.test(mpJson(callTool("elo_count", { maske: "Beleg", gefuellt: ["A", "B", "C", "D"] })).fehler));
+  pruefe("elo_count: Filterwert zu unspezifisch", /zu unspezifisch/.test(mpJson(callTool("elo_count", { maske: "Beleg", felder: { FIRMA: "*" } })).fehler));
+  pruefe("elo_count: maske Pflicht", mpJson(callTool("elo_count", {})).fehler !== undefined);
+} finally {
+  ELO.ix = bzIxEcht;
+}
+
+/* ---------- elo_mask: Formular aus ELOwf.maskforms und Maskenkopie als Datei ---------- */
+
+var mfWert = "(840187C7-2112-F12C-701A-AFA993944475):common_document(105_a,005_b)" + ELO.PILCROW + "(01BEBFDE-71DE-498E-DEE0-A1909D72F41F):ansicht_x(titel,ansicht)" + ELO.PILCROW + "kaputt";
+var mf = maskFormulareLesen(mfWert, "(01bebfde-71de-498e-dee0-a1909d72f41f)");
+pruefe("maskFormulareLesen: Eintrag zur GUID, Gross/klein egal", mf.length === 1 && mf[0].formular === "ansicht_x" && mf[0].seiten.join() === "titel,ansicht" && mf[0].eintrag === "ansicht_x(titel,ansicht)", JSON.stringify(mf));
+pruefe("maskFormulareLesen: keine Zuordnung -> leer", maskFormulareLesen(mfWert, "(00000000-0000-0000-0000-000000000000)").length === 0 && maskFormulareLesen("", "(X)").length === 0);
+var mfOrdner = java.nio.file.Files.createTempDirectory("elo-mcp-maske").toFile(), mfDatei = new java.io.File(mfOrdner, "maske.json");
+var mfPfad = maskeDateiSchreiben(S(mfDatei.getAbsolutePath()), { quelle: "elo_mask", name: "Beleg" });
+pruefe("maskeDateiSchreiben: neue Datei", mfDatei.exists() && JSON.parse(S(new java.lang.String(java.nio.file.Files.readAllBytes(mfDatei.toPath()), "UTF-8"))).name === "Beleg");
+maskeDateiSchreiben(mfPfad, { quelle: "elo_mask", name: "Beleg 2" });
+pruefe("maskeDateiSchreiben: eigene Datei ueberschreiben", JSON.parse(S(new java.lang.String(java.nio.file.Files.readAllBytes(mfDatei.toPath()), "UTF-8"))).name === "Beleg 2");
+var mfFremd = new java.io.File(mfOrdner, "fremd.json"); java.nio.file.Files.write(mfFremd.toPath(), new java.lang.String("{\"a\":1}").getBytes("UTF-8"));
+function mfFehler(f) { try { f(); return ""; } catch (e) { return errText(e); } }
+pruefe("maskeDateiSchreiben: fremde Datei nicht ueberschreiben", /stammt nicht von elo_mask/.test(mfFehler(function () { maskeDateiSchreiben(S(mfFremd.getAbsolutePath()), { quelle: "elo_mask" }); })) &&
+       S(new java.lang.String(java.nio.file.Files.readAllBytes(mfFremd.toPath()), "UTF-8")) === "{\"a\":1}");
+var mfF1 = mfFehler(function () { maskeDateiSchreiben(S(mfOrdner.getAbsolutePath()) + "/x.txt", {}); }), mfF2 = mfFehler(function () { maskeDateiSchreiben("x.json", {}); }),
+    mfF3 = mfFehler(function () { maskeDateiSchreiben(S(mfOrdner.getAbsolutePath()) + "/fehlt/x.json", {}); });
+pruefe("maskeDateiSchreiben: nur .json", /\.json/.test(mfF1), mfF1);
+pruefe("maskeDateiSchreiben: nur absolut", /absoluten/.test(mfF2), mfF2);
+pruefe("maskeDateiSchreiben: Ordner muss bestehen", /gibt es nicht/.test(mfF3), mfF3);
+mfDatei["delete"](); mfFremd["delete"](); mfOrdner["delete"]();
 
 OUT.println("");
 OUT.println(okZahl + " ok, " + fehlerZahl + " Fehler");

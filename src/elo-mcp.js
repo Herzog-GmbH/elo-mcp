@@ -17,8 +17,8 @@
  */
 
 var IXC = Packages.de.elo.ix.client;
-var SERVER_NAME = "elo", SERVER_VERSION = "0.15.0";
-var LIMIT = { suche: 50, liste: 300, aufgaben: 50, workflows: 20, aktiveKnoten: 5, textZeichen: 50000, dateiBytes: 20 * 1024 * 1024 };
+var SERVER_NAME = "elo", SERVER_VERSION = "0.16.0";
+var LIMIT = { suche: 50, liste: 300, aufgaben: 50, workflows: 20, aktiveKnoten: 5, textZeichen: 50000, dateiBytes: 20 * 1024 * 1024, blaettern: 5000, mapSpalten: 10, mapZeichen: 500, zaehlen: 5000, zaehlSeite: 200, zaehlPauseMs: 200, gruppen: 300 };
 
 /* ---------- stdio ---------- */
 
@@ -143,6 +143,31 @@ function findSords(fi, max, sordZ) {
     for (var i = 0; i < arr.length && out.length < max; i++) out.push(arr[i]);
     return { sords: out, mehr: !!fr.isMoreResults() };
   } finally { try { ELO.ix().findClose(fr.getSearchId()); } catch (e) {} }
+}
+
+/* Eine Seite einer Suche: ab = Startindex (0 = erste Seite). Mit zaehlen die Gesamtzahl (FindOptions.evalCount). */
+function findSeite(fi, ab, max, sordZ, zaehlen) {
+  if (zaehlen) { var fo = fi.getFindOptions() || new IXC.FindOptions(); fo.setEvalCount(true); fi.setFindOptions(fo); }
+  var z = sordZ || IXC.SordC.mbAll, fr = ELO.ix().findFirstSords(fi, ab > 0 ? 1 : max, z), sid = fr.getSearchId(), out = [], gesamt = null;
+  try {
+    if (zaehlen) { try { gesamt = Number(fr.getCount()); } catch (e) { gesamt = null; } }
+    if (ab > 0) fr = fr.isMoreResults() ? ELO.ix().findNextSords(sid, ab, max, z) : null;
+    var arr = fr ? fr.getSords() : [];
+    for (var i = 0; arr && i < arr.length && out.length < max; i++) out.push(arr[i]);
+    return { sords: out, mehr: !!(fr && fr.isMoreResults()), gesamt: gesamt };
+  } finally { try { ELO.ix().findClose(sid); } catch (e) {} }
+}
+
+/* Ausgewaehlte Map-Felder eines Objekts (eine Abfrage je Objekt). Passwort-/Token-Felder als ***. */
+function mapSpalten(id, keys) {
+  var mi = ELO.ix().checkoutMap(IXC.MapDomainC.DOMAIN_SORD, S(id), keys, IXC.LockC.NO), items = mi.getItems(), out = {};
+  for (var i = 0; items && i < items.length; i++) {
+    var k = S(items[i].getKey()), v = S(items[i].getValue());
+    if (mapGeheim(k)) v = "***";   // mapGeheim: elo-mcp-notizen.js
+    else if (v.length > LIMIT.mapZeichen) v = v.substring(0, LIMIT.mapZeichen) + " ... (" + v.length + " Zeichen)";
+    out[k] = v;
+  }
+  return out;
 }
 
 /* ---------- Textauszug ---------- */
@@ -365,30 +390,155 @@ tool("elo_search",
     return { treffer: res.length, mehrVorhanden: r.mehr, ordner: ordner ? S(ordner.getName()) : "ganzes Archiv", ergebnisse: res };
   });
 
+/* FindInfo aus maske, felder (Feldgruppe -> Wert, * erlaubt), name und ordner (beliebig tief). */
+function suchInfoFelder(a) {
+  var fb = new IXC.FindByIndex(), keys = [];
+  for (var k in (a.felder || {})) {
+    var v = trim(a.felder[k]);
+    if (v.replace(/[*?%]/g, "").length < 2) fail("Feld " + k + ": Wert zu unspezifisch (mindestens 2 Zeichen ohne Platzhalter).");
+    var ok = new IXC.ObjKey(); ok.setName(S(k)); ok.setData([v]); keys.push(ok);
+  }
+  var nm = trim(a.name);
+  if (a.maske) fb.setMaskId(S(a.maske));
+  if (keys.length) fb.setObjKeys(keys);
+  if (nm) fb.setName(nm);
+  var fi = new IXC.FindInfo(); fi.setFindByIndex(fb);
+  if (a.ordner) { var fc = new IXC.FindChildren(); fc.setParentId(S(sordOf(a.ordner).getId())); fc.setEndLevel(-1); fi.setFindChildren(fc); }
+  return fi;
+}
+
+function ersterWert(s, gruppe) {
+  var keys = s.getObjKeys();
+  for (var i = 0; keys && i < keys.length; i++) {
+    if (S(keys[i].getName()).toUpperCase() !== gruppe) continue;
+    var d = keys[i].getData(), w = [];
+    for (var j = 0; d && j < d.length; j++) if (S(d[j]) !== "") w.push(S(d[j]));
+    return w.join(" | ");
+  }
+  return "";
+}
+
+/* Zaehlt Treffer seitenweise und gruppiert nach bis zu zwei Feldern (ohne ELO testbar ueber ELO.ix). */
+function bestandZaehlen(a) {
+  if (!trim(a.maske)) fail("maske fehlt.");
+  var gr = [], gf = [], i;
+  if (a.gruppe !== undefined && a.gruppe !== null) {
+    var g0 = typeof a.gruppe === "string" ? [a.gruppe] : a.gruppe;
+    if (!(g0 instanceof Array) || g0.length > 2) fail("gruppe: eine oder zwei Feldgruppen.");
+    for (i = 0; i < g0.length; i++) { if (!trim(g0[i])) fail("gruppe: leerer Eintrag."); gr.push(trim(g0[i]).toUpperCase()); }
+  }
+  if (a.gefuellt !== undefined && a.gefuellt !== null) {
+    var f0 = typeof a.gefuellt === "string" ? [a.gefuellt] : a.gefuellt;
+    if (!(f0 instanceof Array) || f0.length > 3) fail("gefuellt: hoechstens drei Feldgruppen.");
+    for (i = 0; i < f0.length; i++) { if (!trim(f0[i])) fail("gefuellt: leerer Eintrag."); gf.push(trim(f0[i]).toUpperCase()); }
+  }
+  var vorab = findSeite(suchInfoFelder(a), 0, 1, IXC.SordC.mbMin, true), gesamt = vorab.gesamt;
+  if (gesamt === null || isNaN(gesamt)) fail("Der Indexserver liefert keine Trefferzahl; eingrenzen und mit elo_find_by_fields blaettern.");
+  var out = { maske: S(a.maske), gesamt: gesamt };
+  if (a.felder) out.filter = a.felder;
+  if (a.ordner) out.ordner = S(a.ordner);
+  if (!gr.length && !gf.length) return out;
+  if (gesamt > LIMIT.zaehlen) fail(gesamt + " Treffer - zum Gruppieren hoechstens " + LIMIT.zaehlen + ". Mit felder oder ordner eingrenzen (die Gesamtzahl allein liefert elo_count ohne gruppe und gefuellt).");
+  var fi = suchInfoFelder(a), z = IXC.SordC.mbAllIndex, fr = ELO.ix().findFirstSords(fi, LIMIT.zaehlSeite, z), sid = fr.getSearchId(), idx = 0, gelesen = 0, geloescht = 0, je = {}, seiten = 1;
+  try {
+    while (true) {
+      var arr = fr.getSords() || [];
+      for (i = 0; i < arr.length; i++) {
+        var s = arr[i];
+        if (s.isDeleted && s.isDeleted()) { geloescht++; continue; }
+        gelesen++;
+        var werte = [], key;
+        for (var g = 0; g < gr.length; g++) werte.push(ersterWert(s, gr[g]) || "(leer)");
+        key = JSON.stringify(werte);
+        var e = je[key] || (je[key] = { werte: werte, anzahl: 0, gefuellt: {} });
+        e.anzahl++;
+        for (var h = 0; h < gf.length; h++) if (ersterWert(s, gf[h]) !== "") e.gefuellt[gf[h]] = (e.gefuellt[gf[h]] || 0) + 1;
+      }
+      if (!fr.isMoreResults() || !arr.length) break;
+      if (gelesen + geloescht > LIMIT.zaehlen) fail("Mehr als " + LIMIT.zaehlen + " Objekte gelesen - abgebrochen. Enger eingrenzen.");
+      idx += arr.length; seiten++;
+      try { java.lang.Thread.sleep(LIMIT.zaehlPauseMs); } catch (ePause) {}
+      fr = ELO.ix().findNextSords(sid, idx, LIMIT.zaehlSeite, z);
+    }
+  } finally { try { ELO.ix().findClose(sid); } catch (eC) {} }
+  var liste = [], k;
+  for (k in je) liste.push(je[k]);
+  liste.sort(function (x, y) { return y.anzahl - x.anzahl || (x.werte.join("\u0001") < y.werte.join("\u0001") ? -1 : 1); });
+  out.gezaehlt = gelesen;
+  if (geloescht) out.geloeschtUebersprungen = geloescht;
+  out.seiten = seiten;
+  if (gr.length) out.gruppiertNach = gr;
+  out.gruppen = liste.slice(0, LIMIT.gruppen).map(function (e) {
+    var o = {};
+    for (var g = 0; g < gr.length; g++) o[gr[g]] = e.werte[g];
+    o.anzahl = e.anzahl;
+    for (var h = 0; h < gf.length; h++) o[gf[h] + "_gefuellt"] = e.gefuellt[gf[h]] || 0;
+    return o;
+  });
+  if (liste.length > LIMIT.gruppen) out.weitereGruppen = liste.length - LIMIT.gruppen;
+  if (gf.length) { var sum = {}; for (var h2 = 0; h2 < gf.length; h2++) { sum[gf[h2]] = 0; for (var q = 0; q < liste.length; q++) sum[gf[h2]] += liste[q].gefuellt[gf[h2]] || 0; } out.gefuelltGesamt = sum; }
+  return out;
+}
+
+tool("elo_count",
+  "Zaehlt Objekte einer Maske, nur Zahlen, keine Feldinhalte ausser den Gruppenwerten. Ohne gruppe/gefuellt nur die Gesamtzahl (eine Zaehlabfrage, auch fuer eine ganze Maske). " +
+  "Mit gruppe (eine oder zwei Feldgruppen) Anzahl je Wert bzw. Wertepaar, mit gefuellt (bis drei Feldgruppen) je Gruppe, wie viele dieses Feld gefuellt haben. " +
+  "Dafuer werden die Treffer in Seiten zu " + LIMIT.zaehlSeite + " mit Pause gelesen, hoechstens " + LIMIT.zaehlen + " - vorher prueft eine Zaehlabfrage die Menge und lehnt groessere ab. " +
+  "Eingrenzen mit felder (Platzhalter * erlaubt) und ordner (beliebig tief). Als geloescht markierte Objekte zaehlen nicht.",
+  { maske: { type: "string", description: "Maskenname oder -ID (Pflicht)" },
+    felder: { type: "object", additionalProperties: { type: "string" }, description: "Optional: Feldgruppe -> Wert, z. B. {\"FIRMA\": \"Muster*\"}" },
+    ordner: { type: "string", description: "Optional: nur unterhalb dieses Ordners (beliebig tief)" },
+    gruppe: { type: "array", items: { type: "string" }, description: "Optional: eine oder zwei Feldgruppen, z. B. [\"FIRMA\", \"BELEGART\"]" },
+    gefuellt: { type: "array", items: { type: "string" }, description: "Optional: bis drei Feldgruppen; je Gruppe die Zahl der Objekte, bei denen das Feld gefuellt ist" } },
+  ["maske"], function (a) { return bestandZaehlen(a); });
+
 tool("elo_find_by_fields",
-  "Sucht ueber Indexfelder einer Maske (Datenbanksuche, exakt, Platzhalter * erlaubt). Mindestens ein Feld oder ein Name ist Pflicht - eine ganze Maske ohne Eingrenzung wird nicht gelistet.",
+  "Sucht ueber Indexfelder einer Maske (Datenbanksuche, exakt, Platzhalter * erlaubt). Mindestens ein Feld oder ein Name ist Pflicht - eine ganze Maske ohne Eingrenzung wird nicht gelistet. " +
+  "Seitenweise: max Treffer je Seite (hoechstens " + LIMIT.suche + "), ab = Startindex der Seite (0, 50, 100 ... bis " + LIMIT.blaettern + "); naechsteSeite nennt den naechsten Wert. " +
+  "gesamt=true zaehlt alle Treffer. spalten grenzt die gezeigten Indexfelder ein, mapFelder zeigt bis " + LIMIT.mapSpalten + " Map-Felder je Treffer (eine Abfrage je Treffer).",
   { maske: { type: "string", description: "Maskenname oder -ID, z. B. 'Rechnung'" },
     felder: { type: "object", additionalProperties: { type: "string" }, description: "Feldgruppe -> Wert, z. B. {\"NACHNAME\": \"Mustermann\"}" },
     name: { type: "string", description: "Kurzbezeichnung, Platzhalter * erlaubt" },
     ordner: { type: "string", description: "Optional: nur unterhalb dieses Ordners (beliebig tief)" },
-    max: { type: "integer", description: "Standard 20, hoechstens " + LIMIT.suche } },
+    max: { type: "integer", description: "Treffer je Seite, Standard 20, hoechstens " + LIMIT.suche },
+    ab: { type: "integer", description: "Startindex der Seite, Standard 0; fuer die naechste Seite den Wert aus naechsteSeite" },
+    gesamt: { type: "boolean", description: "true = Gesamtzahl der Treffer mitliefern" },
+    spalten: { type: "array", items: { type: "string" }, description: "Nur diese Indexfelder (Feldgruppen) zeigen; leer = alle gefuellten" },
+    mapFelder: { type: "array", items: { type: "string" }, description: "Map-Felder je Treffer, exakte Schluessel, z. B. [\"IMP_NACHGEZOGEN\"]" } },
   [], function (a) {
-    var fb = new IXC.FindByIndex(), keys = [];
-    for (var k in (a.felder || {})) {
-      var v = trim(a.felder[k]);
-      if (v.replace(/[*?%]/g, "").length < 2) fail("Feld " + k + ": Wert zu unspezifisch (mindestens 2 Zeichen ohne Platzhalter).");
-      var ok = new IXC.ObjKey(); ok.setName(S(k)); ok.setData([v]); keys.push(ok);
+    var nm = trim(a.name), keysN = 0;
+    for (var k0 in (a.felder || {})) keysN++;
+    if (keysN === 0 && nm.replace(/[*?%]/g, "").length < 3) fail("Bitte mindestens ein Feld oder einen Namen mit 3 Zeichen ohne Platzhalter angeben.");
+    var ab = a.ab === undefined || a.ab === null ? 0 : parseInt(a.ab, 10);
+    if (!(ab >= 0)) fail("ab: ganze Zahl ab 0.");
+    if (ab > LIMIT.blaettern) fail("ab hoechstens " + LIMIT.blaettern + ". Die Suche enger fassen (Feld, Ordner).");
+    var mk = [], sp = null, i;
+    if (a.mapFelder !== undefined && a.mapFelder !== null) {
+      if (!(a.mapFelder instanceof Array)) fail("mapFelder: Liste von Schluesseln.");
+      for (i = 0; i < a.mapFelder.length; i++) { var t = trim(a.mapFelder[i]); if (!t || /[*?%]/.test(t)) fail("mapFelder: exakte Schluessel ohne Platzhalter."); mk.push(t); }
+      if (mk.length > LIMIT.mapSpalten) fail("Hoechstens " + LIMIT.mapSpalten + " mapFelder.");
     }
-    var nm = trim(a.name);
-    if (keys.length === 0 && nm.replace(/[*?%]/g, "").length < 3) fail("Bitte mindestens ein Feld oder einen Namen mit 3 Zeichen ohne Platzhalter angeben.");
-    if (a.maske) fb.setMaskId(S(a.maske));
-    if (keys.length) fb.setObjKeys(keys);
-    if (nm) fb.setName(nm);
-    var fi = new IXC.FindInfo(); fi.setFindByIndex(fb);
-    if (a.ordner) { var fc = new IXC.FindChildren(); fc.setParentId(S(sordOf(a.ordner).getId())); fc.setEndLevel(-1); fi.setFindChildren(fc); }
-    var r = findSords(fi, cap(a.max, 20, LIMIT.suche)), res = [];
-    for (var i = 0; i < r.sords.length; i++) { var o = brief(r.sords[i]); o.felder = indexFields(r.sords[i]); res.push(o); }
-    return { treffer: res.length, mehrVorhanden: r.mehr, ergebnisse: res };
+    if (a.spalten !== undefined && a.spalten !== null) {
+      if (!(a.spalten instanceof Array)) fail("spalten: Liste von Feldgruppen.");
+      sp = {}; for (i = 0; i < a.spalten.length; i++) sp[trim(a.spalten[i]).toUpperCase()] = true;
+    }
+    var fi = suchInfoFelder(a);
+    var max = cap(a.max, 20, LIMIT.suche), r = findSeite(fi, ab, max, IXC.SordC.mbAll, a.gesamt === true), res = [];
+    var mkArr = mk.length ? java.lang.reflect.Array.newInstance(java.lang.String, mk.length) : null;
+    for (i = 0; i < mk.length; i++) mkArr[i] = mk[i];
+    for (i = 0; i < r.sords.length; i++) {
+      var o = brief(r.sords[i]), f = indexFields(r.sords[i]);
+      if (sp) f = f.filter(function (x) { return sp[S(x.feld).toUpperCase()]; });
+      o.felder = f;
+      if (mkArr) { try { o.map = mapSpalten(S(r.sords[i].getId()), mkArr); } catch (e) { if (isSessionError(e)) throw e; o.map = { fehler: errText(e) }; } }
+      res.push(o);
+    }
+    var out = { treffer: res.length, ab: ab, mehrVorhanden: r.mehr };
+    if (r.gesamt !== null) out.gesamt = r.gesamt;
+    if (r.mehr) out.naechsteSeite = ab + res.length;
+    if (r.mehr && ab + res.length > LIMIT.blaettern) out.hinweis = "Ab " + LIMIT.blaettern + " wird nicht weiter geblaettert; Suche enger fassen.";
+    out.ergebnisse = res;
+    return out;
   });
 
 tool("elo_list", "Listet den direkten Inhalt eines Ordners (eine Ebene).",
