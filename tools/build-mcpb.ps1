@@ -70,6 +70,7 @@ $inhalt = [ordered]@{
   "src/elo-mcp-notizen.js" = "src\elo-mcp-notizen.js"
   "src/elo-mcp-ergaenzungen.js" = "src\elo-mcp-ergaenzungen.js"
   "src/elo-mcp-ablage.js" = "src\elo-mcp-ablage.js"
+  "src/elo-mcp-wiedervorlagen.js" = "src\elo-mcp-wiedervorlagen.js"
   "src/elo-mcp-start.js"  = "src\elo-mcp-start.js"
   "LICENSE"               = "LICENSE"
   "README.md"             = "README.md"

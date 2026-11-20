@@ -105,6 +105,17 @@ Was uns beim Bau dieses Servers begegnet ist, geprüft gegen einen Indexserver 2
 | Ein entfernter Verweis ist nur ein als gelöscht markierter Verweis. `restoreSord` mit `minDeleteDate` holt ihn mit dem Ordner zurück, wenn er ab dessen Löschzeitpunkt entfernt wurde; weil der Zeitpunkt minutengenau ist, auch kurz davor in derselben Minute. | Vor dem Wiederherstellen mit `FindOptions.inclDeleted` zählen, was mitkommt (`elo_restore` zeigt es), und überzählige Verweise danach wieder entfernen. Früher entfernte Verweise bleiben weg. |
 | Ein Kind eines gelöschten Ordners lässt sich nicht für sich zurückholen, solange der Ordner gelöscht ist. | Erst den Elternordner, dann das Kind (oder beide in einem Aufruf, Eltern zuerst). |
 
+## Aufgaben und Wiedervorlagen
+
+| Falle | Was stattdessen |
+|---|---|
+| `findFirstTasks` sucht ohne Angabe nur Priorität 0 (`highestPriority` = `lowestPriority` = 0). Aufgaben und Wiedervorlagen mit Priorität 1 (mittel) oder 2 (niedrig) fehlen still. | Immer `setHighestPriority(0)` und `setLowestPriority(2)`. Umgekehrt lehnt der Indexserver ab (ELOIX:2000). |
+| Wiedervorlagen zu als gelöscht markierten Objekten liefert die Aufgabensuche nicht, der Client zeigt sie auch nicht. Sie bleiben aber bestehen und kommen mit dem Objekt zurück. | `setInclDeleted(true)`; beim Aufräumen nach dem Löschen von Dokumenten an ihre Wiedervorlagen denken. |
+| `setAllUsers(true)` ohne Objekt listet die Wiedervorlagen aller Konten. | Nur zusammen mit `setObjId`. |
+| Datum und Frist einer Wiedervorlage stehen in UTC (`promptDateIso`, `dueDateIso`); Mitternacht deutscher Zeit ist 22:00 oder 23:00 Uhr am Vortag. | Zum Schreiben Ortszeit nach UTC umrechnen, zum Anzeigen zurück. |
+| `checkinReminder(reminder, empfaengerIds, expandGroups, lock)` legt je Empfänger eine eigene Wiedervorlage an und gibt deren IDs zurück; mit `expandGroups` = `true` eine je Gruppenmitglied. `Reminder.name` höchstens 128 Zeichen. | IDs aus dem Rückgabewert zum Zurücklesen (`checkoutReminders`) nehmen. |
+| `checkoutReminders` bricht bei einer unbekannten ID den ganzen Aufruf ab. `deleteReminders` löscht endgültig. | IDs einzeln lesen; vor dem Löschen alle Angaben sichern. |
+
 ## Indexserver-Skripte
 
 | Falle | Was stattdessen |

@@ -1,5 +1,5 @@
 /* elo-mcp-start.js - Hauptschleife des ELO-MCP-Servers. Wird als letzte Datei geladen
- * (nach elo.js und allen elo-mcp-*.js, zuletzt elo-mcp-ablage.js). */
+ * (nach elo.js und allen elo-mcp-*.js, zuletzt elo-mcp-wiedervorlagen.js). */
 
 log("gestartet, Server " + S(java.lang.System.getenv("ELO_IX_URL")) + ", " + freieWerkzeuge().length + " von " + TOOLS.length + " Werkzeugen (Stufen " + stufenText() + ")");
 var line;

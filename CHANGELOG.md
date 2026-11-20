@@ -1,5 +1,16 @@
 # Änderungen
 
+## 0.15.0 – 2026-11-20
+
+- **Wiedervorlagen**, drei neue Werkzeuge in `src/elo-mcp-wiedervorlagen.js` (jetzt 60). Anlass: Beim Aufräumen von Testaufgaben zählte der Client eine Aufgabe mehr, als der Server lesen und beenden konnte; Wiedervorlagen kannte er bisher gar nicht.
+  - `elo_reminders` (Stufe 1): Wiedervorlagen über `findFirstTasks` mit `inclReminders`, ohne Workflows, `updateInUseDate` aus. Ohne Angabe das angemeldete Konto mit seinen Gruppen, mit `benutzer` ein anderes Konto, mit `objekt` alle Empfänger zu einem Objekt (`allUsers` nur zusammen mit `objId`). Je Eintrag ID, Name, Beschreibung, Objekt, Empfänger, Absender, Datum, Frist, Priorität und `faellig`. Mit `geloeschteObjekte` (`inclDeleted`) auch Wiedervorlagen zu als gelöscht markierten Objekten, gekennzeichnet mit `objektGeloescht`.
+  - `elo_reminder_create` (Stufe 2): `createReminder` + `checkinReminder` je Empfänger (bis 10, Personen oder Gruppen; `anJedesMitglied` = `expandGroups`). Datum als Mitternacht Ortszeit nach UTC umgerechnet. Die Vorschau warnt bei gleichem Text für denselben Empfänger am Objekt, bei Datum in der Vergangenheit und bei gelöschtem Objekt; danach zurückgelesen.
+  - `elo_reminder_delete` (Stufe 2): `deleteReminders` per `ids` oder für alle Wiedervorlagen eines Objekts (auch eines gelöschten), optional nur eines Empfängers. Endgültig, deshalb vorher Sicherung aller Angaben als JSON; jede ID wird einzeln gelesen, unbekannte und schon gelöschte stehen unter `ausgelassen`. Danach zurückgelesen.
+- `elo_my_tasks` liefert jetzt auch Wiedervorlagen (Feld `art`: `workflow` oder `wiedervorlage`, dazu die Zahl je Art); `wiedervorlagen=false` wie bisher nur Workflow-Aufgaben.
+- **Fehler behoben:** `findFirstTasks` sucht ohne Angabe nur Priorität 0 (hoch). `elo_my_tasks` und die Auswahl per `benutzer` in `elo_workflow_terminate` übersahen damit Aufgaben mit Priorität 1 und 2. Alle Aufgabensuchen setzen jetzt den Bereich 0 bis 2.
+- In [docs/FALLEN.md](docs/FALLEN.md) beschrieben: Prioritätsfilter, ausgeblendete Wiedervorlagen gelöschter Objekte, Zeiten in UTC, `expandGroups`.
+- Offline-Test um Wiedervorlagen im Speicher erweitert (275/433/439 Prüfungen). Live in einem Testarchiv: lesen (eigenes Konto, Objekt, gelöschte Objekte), anlegen mit Datum, Frist und Priorität, löschen per Objekt und per ID, Sichtbarkeit in `elo_my_tasks`.
+
 ## 0.14.0 – 2026-11-19
 
 - **Vorgänge beenden:** neues Werkzeug `elo_workflow_terminate` (Stufe 2, jetzt 57). Anlass: Vor einem Anwendertest mussten Testaufgaben aufgeräumt werden, was bisher nur ein Einmal-Skript konnte.

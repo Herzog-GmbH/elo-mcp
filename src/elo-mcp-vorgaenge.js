@@ -801,7 +801,7 @@ function aufgabenVorgaenge(uid, gruppen, vertretungen) {
   var fi = new IXC.FindTasksInfo(), uids = java.lang.reflect.Array.newInstance(java.lang.String, 1), fr = null, idx = 0, flows = [], gesehen = {}, mehr = false;
   uids[0] = S(uid);
   fi.setUserIds(uids); fi.setInclWorkflows(true); fi.setInclGroup(gruppen); fi.setInclDeputy(vertretungen);
-  fi.setInclActivities(false); fi.setInclReminders(false); fi.setUpdateInUseDate(false);
+  fi.setInclActivities(false); fi.setInclReminders(false); fi.setUpdateInUseDate(false); alleTaskPrios(fi);
   try {
     fr = ELO.ix().findFirstTasks(fi, LIMIT_BEENDEN.seite);
     while (true) {

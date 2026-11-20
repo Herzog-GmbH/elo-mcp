@@ -1,7 +1,7 @@
 /*
  * offline.js - Pruefungen ohne ELO-Verbindung: Protokoll, Stufen, Vorschau und Token,
  * Datumspruefung, Bauplan-, Skript- und Maskenpruefungen. Wird von test\offline.ps1 nach den Quellen geladen
- * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js, elo-mcp-vorgaenge.js, elo-mcp-notizen.js, elo-mcp-ergaenzungen.js, elo-mcp-ablage.js - ohne elo-mcp-start.js).
+ * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js, elo-mcp-vorgaenge.js, elo-mcp-notizen.js, elo-mcp-ergaenzungen.js, elo-mcp-ablage.js, elo-mcp-wiedervorlagen.js - ohne elo-mcp-start.js).
  */
 
 var OUT = REAL_OUT, fehlerZahl = 0, okZahl = 0;
@@ -20,7 +20,7 @@ pruefe("initialize: Hinweise nennen die Stufen", init.result.instructions.indexO
 
 var liste = handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }).result.tools, namen = {};
 for (var i = 0; i < liste.length; i++) namen[liste[i].name] = true;
-var erwartet = 25 + (SCHREIBEN_ERLAUBT ? 14 : 0) + (BAUEN_ERLAUBT ? 18 : 0);
+var erwartet = 26 + (SCHREIBEN_ERLAUBT ? 16 : 0) + (BAUEN_ERLAUBT ? 18 : 0);
 pruefe("tools/list: " + erwartet + " Werkzeuge bei Stufen " + stufenText(), liste.length === erwartet, liste.length);
 pruefe("tools/list: Schreibwerkzeug nur mit -Schreiben", !!namen.elo_set_fields === SCHREIBEN_ERLAUBT);
 pruefe("tools/list: Bauwerkzeug nur mit -Bauen", !!namen.elo_workflow_build === BAUEN_ERLAUBT);
@@ -1113,7 +1113,7 @@ ELO.ix = function () {
       if (fi.isInclGroup()) l.push(wbAufgabe(102, "Buchen", "Beispielgruppe"));
       if (fi.isInclDeputy()) l.push(wbAufgabe(103, "Pruefen", "Muster, Max"));
       l = l.filter(function (t) { return WB[String(t.getWfNode().getFlowId())].aktiv; });
-      wbFind.push({ user: String(fi.getUserIds()[0]), gruppe: fi.isInclGroup(), vertretung: fi.isInclDeputy(), inUse: fi.isUpdateInUseDate(), wf: fi.isInclWorkflows() });
+      wbFind.push({ user: String(fi.getUserIds()[0]), gruppe: fi.isInclGroup(), vertretung: fi.isInclDeputy(), inUse: fi.isUpdateInUseDate(), wf: fi.isInclWorkflows(), prio: fi.getHighestPriority() + "-" + fi.getLowestPriority() });
       function seite(ab) { var s = l.slice(ab, ab + max); return { getTasks: function () { return s; }, isMoreResults: function () { return ab + max < l.length; }, getSearchId: function () { return "t1"; } }; }
       wbAufrufe.push("find"); wbBlatt = seite;
       return seite(0);
@@ -1159,7 +1159,7 @@ try {
     pruefe("elo_workflow_terminate benutzer: Vorschau nennt aktive Knoten mit Bearbeiter und Vorlage", wbV1.vorgaenge[0].aktiveKnoten.join("|") === "Pruefen (Test, Konto)|Freigeben (Test, Konto)" &&
            wbV1.vorgaenge[0].vorlage === "WF-Dokument pruefen [69]" && wbV1.vorgaenge[1].vorlage === "Andere Vorlage [70]" && wbV1.vorgaenge[0].name === "Pruefung A", JSON.stringify(wbV1.vorgaenge));
     pruefe("elo_workflow_terminate benutzer: Suche mit userIds, Gruppen, ohne Vertretung, ohne inUseDate, blaettert und schliesst",
-           wbFind[0].user === "75" && wbFind[0].gruppe === true && wbFind[0].vertretung === false && wbFind[0].inUse === false && wbFind[0].wf === true &&
+           wbFind[0].user === "75" && wbFind[0].gruppe === true && wbFind[0].vertretung === false && wbFind[0].inUse === false && wbFind[0].wf === true && wbFind[0].prio === "0-2" &&
            wbAufrufe.indexOf("next 2") >= 0 && wbAufrufe.indexOf("close") >= 0, JSON.stringify(wbFind) + " " + wbAufrufe.join());
     pruefe("elo_workflow_terminate benutzer: beendet mit Sperre, Sicherung vorher, Ergebnis je Vorgang",
            wbB1.ergebnis.modus === "ausgefuehrt" && wbB1.ergebnis.ergebnis.beendet === 2 && wbB1.ergebnis.ergebnis.fehler === undefined &&
@@ -1223,6 +1223,179 @@ try {
 } finally {
   ELO.ix = wbIxEcht; ELO.connect = wbConnEcht; protokoll = wbProtEcht; jsonSichern = wbSichEcht; warte = wbWarteEcht; testArchiv = wbTestEcht; vorlageNachName = wbVnEcht;
   LIMIT_BEENDEN.seite = wbSeite;
+}
+
+/* ---------- Wiedervorlagen (nur im Speicher, erfundene Daten) ---------- */
+
+pruefe("tools/list: Wiedervorlagen lesen immer", !!namen.elo_reminders);
+pruefe("tools/list: Wiedervorlagen anlegen/loeschen nur mit -Schreiben", !!namen.elo_reminder_create === SCHREIBEN_ERLAUBT && !!namen.elo_reminder_delete === SCHREIBEN_ERLAUBT);
+pruefe("Wiedervorlagen: Datum Ortszeit -> UTC -> Ortszeit", wvLokal(wvUtc("2028-09-02")) === "02.09.2028" && wvLokal(wvUtc("02.01.2028")) === "02.01.2028" && wvUtc("2028-09-02").length === 14);
+
+/* Konto 75 (Gruppe 3), Objekte 4711/4712. */
+var WV, wvFind, wvAufrufe, wvNaechste;
+function wvNeu() {
+  WV = {}; wvFind = []; wvAufrufe = []; wvNaechste = 500;
+  wvSetzen(91, 4711, "Frist Kuendigung", "20280901220000", "20280929220000", 75, "Test, Konto");
+  wvSetzen(92, 4711, "Rueckruf", "20200101230000", "", 3, "Beispielgruppe");
+  wvSetzen(93, 4712, "Anderes", "20200101230000", "", 5, "Muster, Max");
+  wvSetzen(95, 4713, "Zu geloeschtem Beleg", "20200101230000", "", 75, "Test, Konto");
+}
+function wvSetzen(id, obj, name, am, frist, empf, empfName) {
+  var r = new IXC.Reminder(); r.setId(id); r.setObjId(obj); r.setName(name); r.setPromptDateIso(am); r.setDueDateIso(frist);
+  r.setReceiverId(empf); r.setReceiverName(empfName); r.setSenderName("Test, Konto"); r.setPrio(1); r.setCreateDateIso("20261119080000");
+  WV[String(id)] = r; return r;
+}
+function wvKopie(r) { var c = new IXC.Reminder(); c.setId(r.getId()); c.setObjId(r.getObjId()); c.setName(r.getName()); c.setPromptDateIso(r.getPromptDateIso());
+  c.setDueDateIso(r.getDueDateIso()); c.setReceiverId(r.getReceiverId()); c.setReceiverName(r.getReceiverName()); c.setSenderName(r.getSenderName());
+  c.setPrio(r.getPrio()); c.setDesc(r.getDesc()); c.setDeleted(r.isDeleted()); return c; }
+var WV_NUTZER = { "75": ["Test, Konto", IXC.UserInfoC.TYPE_USER, [3]], "Test, Konto": "75", "3": ["Beispielgruppe", IXC.UserInfoC.TYPE_GROUP, []], "Beispielgruppe": "3",
+                  "5": ["Muster, Max", IXC.UserInfoC.TYPE_USER, []], "Muster, Max": "5" };
+function wvNutzer(wer) {
+  var k = String(wer), e = WV_NUTZER[k];
+  if (typeof e === "string") { k = e; e = WV_NUTZER[k]; }
+  if (!e) throw "[ELOIX:5023]unbekannt " + wer;
+  var u = new IXC.UserInfo(); u.setId(parseInt(k, 10)); u.setName(e[0]); u.setType(e[1]);
+  var gl = java.lang.reflect.Array.newInstance(java.lang.Integer.TYPE, e[2].length); for (var i = 0; i < e[2].length; i++) gl[i] = e[2][i]; u.setGroupList(gl);
+  return u;
+}
+var wvIxEcht = ELO.ix, wvConnEcht = ELO.connect, wvProtEcht = protokoll, wvSichEcht = jsonSichern, wvWarteEcht = warte, wvGesichert = [];
+ELO.ix = function () {
+  return {
+    checkoutUser: function (wer) { return wvNutzer(wer); },
+    checkoutUsers: function (ids) { var o = []; for (var i = 0; i < ids.length; i++) o.push(wvNutzer(ids[i])); return o; },
+    checkoutSord: function (id) {
+      id = String(id); if (id !== "4711" && id !== "4712" && id !== "4713") throw "[ELOIX:5023]nicht gefunden " + id;
+      var s = new IXC.Sord(); s.setId(parseInt(id, 10)); s.setName({ "4711": "Vertrag Muster", "4712": "Rechnung Muster", "4713": "Beleg geloescht" }[id]); s.setType(254);
+      s.setDeleted(id === "4713"); return s;
+    },
+    findFirstTasks: function (fi, max) {
+      var uid = fi.getUserIds() ? String(fi.getUserIds()[0]) : (fi.isAllUsers() ? "" : "75"), obj = S(fi.getObjId()), l = [];
+      wvFind.push({ user: uid, alle: fi.isAllUsers(), obj: obj, wv: fi.isInclReminders(), wf: fi.isInclWorkflows(), gruppe: fi.isInclGroup(), inUse: fi.isUpdateInUseDate(), prio: fi.getHighestPriority() + "-" + fi.getLowestPriority() });
+      var meine = {}; if (uid) { meine[uid] = true; if (fi.isInclGroup()) { var u = wvNutzer(uid), g = u.getGroupList(); for (var i = 0; g && i < g.length; i++) meine[String(g[i])] = true; } }
+      for (var k in WV) {
+        var r = WV[k];
+        if (r.isDeleted()) continue;
+        if (String(r.getObjId()) === "4713" && !fi.isInclDeleted()) continue;
+        if (obj && String(r.getObjId()) !== obj) continue;
+        if (!fi.isAllUsers() && !meine[String(r.getReceiverId())]) continue;
+        (function (rr) { l.push({ getReminder: function () { return wvKopie(rr); }, getWfNode: function () { return null; },
+                                  getSord: function () { var s = new IXC.Sord(); s.setId(rr.getObjId()); s.setName("Objekt " + rr.getObjId()); s.setDeleted(String(rr.getObjId()) === "4713"); return s; } }); })(r);
+      }
+      if (fi.isInclWorkflows()) l.unshift({ getReminder: function () { return null; }, getSord: function () { return null; },
+        getWfNode: function () { var n = new IXC.WFCollectNode(); n.setFlowId(101); n.setFlowName("Pruefung A"); n.setNodeName("Pruefen"); n.setObjId("4711"); return n; } });
+      var s = l.slice(0, max);
+      return { getTasks: function () { return s; }, isMoreResults: function () { return l.length > max; }, getSearchId: function () { return "w1"; } };
+    },
+    findClose: function () { wvAufrufe.push("close"); },
+    createReminder: function (obj) { var r = new IXC.Reminder(); r.setObjId(parseInt(obj, 10)); r.setPrio(0); return r; },
+    checkinReminder: function (r, empf, expand, lock) {
+      wvAufrufe.push("checkin " + Array.prototype.slice.call(empf).join("+") + " expand=" + expand);
+      var ids = [];
+      for (var i = 0; i < empf.length; i++) {
+        var u = wvNutzer(empf[i]), n = wvSetzen(wvNaechste++, r.getObjId(), r.getName(), r.getPromptDateIso(), r.getDueDateIso(), u.getId(), u.getName());
+        n.setPrio(r.getPrio()); n.setDesc(r.getDesc()); ids.push(n.getId());
+      }
+      var arr = java.lang.reflect.Array.newInstance(java.lang.Integer.TYPE, ids.length); for (var j = 0; j < ids.length; j++) arr[j] = ids[j]; return arr;
+    },
+    checkoutReminders: function (ids) {
+      var o = [];
+      for (var i = 0; i < ids.length; i++) { var r = WV[String(ids[i])]; if (!r) throw "[ELOIX:5023]Wiedervorlage " + ids[i] + " nicht gefunden"; o.push(wvKopie(r)); }
+      return o;
+    },
+    deleteReminders: function (ids) { var t = []; for (var i = 0; i < ids.length; i++) { t.push(String(ids[i])); if (WV[String(ids[i])]) WV[String(ids[i])].setDeleted(true); } wvAufrufe.push("delete " + t.join("+")); }
+  };
+};
+ELO.connect = function () { return { getLoginResult: function () { return { getUser: function () { return wvNutzer("75"); } }; } }; };
+protokoll = function () {};
+jsonSichern = function (name, inhalt) { wvGesichert.push({ name: name, inhalt: inhalt }); return "sicherung-" + name; };
+warte = function () {};
+try {
+  wvNeu();
+  var wvL = mpJson(callTool("elo_reminders", {}));
+  pruefe("elo_reminders: eigenes Konto mit Gruppen, ohne Workflows, ohne inUseDate", wvL.anzahl === 2 && wvL.benutzer === "Test, Konto [75]" &&
+         wvFind[0].user === "75" && wvFind[0].gruppe === true && wvFind[0].wv === true && wvFind[0].wf === false && wvFind[0].inUse === false && wvFind[0].prio === "0-2" && wvAufrufe.indexOf("close") >= 0, JSON.stringify(wvL) + JSON.stringify(wvFind));
+  var wv91 = wvL.wiedervorlagen.filter(function (x) { return x.id === "91"; })[0], wv92 = wvL.wiedervorlagen.filter(function (x) { return x.id === "92"; })[0];
+  pruefe("elo_reminders: Datum in Ortszeit, faellig, Prioritaet im Klartext", wv91.am === wvLokal("20280901220000") && wv91.frist === wvLokal("20280929220000") && wv91.faellig === false &&
+         wv92.faellig === true && wv91.prio === "1 (mittel)" && wvL.faellig === 1 && wv91.objekt === "Objekt 4711", JSON.stringify(wvL.wiedervorlagen));
+  pruefe("elo_reminders: gruppen=false nur eigene", mpJson(callTool("elo_reminders", { gruppen: false })).anzahl === 1);
+  var wvGel = mpJson(callTool("elo_reminders", { geloeschteObjekte: true }));
+  pruefe("elo_reminders: geloeschteObjekte zeigt Wiedervorlagen geloeschter Objekte, gekennzeichnet", wvGel.anzahl === 3 &&
+         wvGel.wiedervorlagen.filter(function (x) { return x.id === "95" && x.objektGeloescht === true; }).length === 1 && wvL.wiedervorlagen.filter(function (x) { return x.id === "95"; }).length === 0, JSON.stringify(wvGel));
+  var wvO = mpJson(callTool("elo_reminders", { objekt: "4711" }));
+  pruefe("elo_reminders: objekt ohne benutzer = alle Empfaenger dieses Objekts", wvO.anzahl === 2 && wvO.benutzer === "alle" && wvFind[wvFind.length - 1].alle === true && wvFind[wvFind.length - 1].obj === "4711", JSON.stringify(wvO));
+  var wvB = mpJson(callTool("elo_reminders", { benutzer: "Muster, Max" }));
+  pruefe("elo_reminders: anderes Konto", wvB.anzahl === 1 && wvB.wiedervorlagen[0].id === "93" && wvB.benutzer === "Muster, Max [5]", JSON.stringify(wvB));
+  pruefe("elo_reminders: unbekanntes Objekt", /nicht gefunden/.test(mpJson(callTool("elo_reminders", { objekt: "9999" })).fehler));
+
+  var wvT = mpJson(callTool("elo_my_tasks", {}));
+  pruefe("elo_my_tasks: Workflow-Aufgaben und Wiedervorlagen mit art", wvT.aufgaben === 3 && wvT.workflows === 1 && wvT.wiedervorlagen === 2 &&
+         wvT.liste[0].art === "workflow" && wvT.liste[1].art === "wiedervorlage" && !!wvT.liste[1].am, JSON.stringify(wvT));
+  var wvT2 = mpJson(callTool("elo_my_tasks", { wiedervorlagen: false }));
+  pruefe("elo_my_tasks: alle Prioritaeten 0 bis 2", wvFind[wvFind.length - 1].prio === "0-2", JSON.stringify(wvFind[wvFind.length - 1]));
+  pruefe("elo_my_tasks: wiedervorlagen=false nur Workflows", wvT2.aufgaben === 1 && wvT2.wiedervorlagen === undefined && wvFind[wvFind.length - 1].wv === false, JSON.stringify(wvT2));
+
+  if (SCHREIBEN_ERLAUBT) {
+    var wvC = mpJson(callTool("elo_reminder_create", { objekt: "4711", am: "2028-09-02", frist: "2028-09-30", empfaenger: ["Test, Konto", "Beispielgruppe", "75"], prio: "hoch" }));
+    pruefe("elo_reminder_create: Vorschau ohne Anlegen, Standardname, Empfaenger einmal, Gruppe gekennzeichnet",
+           wvC.vorschau.name === "Wiedervorlage: Vertrag Muster" && wvC.vorschau.empfaenger.join("|") === "Test, Konto [75]|Beispielgruppe [3] (Gruppe)" &&
+           wvC.vorschau.am === "02.09.2028" && wvC.vorschau.frist === "30.09.2028" && wvC.vorschau.prio === "hoch" && wvC.vorschau.vorhandeneZumObjekt === 2 &&
+           enthaelt(wvC.warnungen, "gemeinsame Wiedervorlage") && wvAufrufe.join().indexOf("checkin") < 0, JSON.stringify(wvC));
+    var wvC2 = mpJson(callTool("elo_reminder_create", { objekt: "4711", am: "2028-09-02", frist: "2028-09-30", empfaenger: ["Test, Konto", "Beispielgruppe", "75"], prio: "hoch", token: wvC.token }));
+    var wvNeuR = WV["500"];
+    pruefe("elo_reminder_create: legt je Empfaenger an, Datum UTC, Gruppe nicht aufgeloest, zurueckgelesen",
+           wvC2.ergebnis.angelegt === 2 && wvC2.ergebnis.rueckgelesen === "ok, wie geplant" && enthaelt(wvAufrufe, "checkin 75+3 expand=false") &&
+           String(wvNeuR.getPromptDateIso()) === wvUtc("2028-09-02") && String(wvNeuR.getDueDateIso()) === wvUtc("2028-09-30") && wvNeuR.getPrio() === 0, JSON.stringify(wvC2) + wvAufrufe.join());
+    var wvC3 = mpJson(callTool("elo_reminder_create", { objekt: "4711", name: "Frist Kuendigung" }));
+    pruefe("elo_reminder_create: Standard eigenes Konto, heute, Warnung bei gleichem Namen", wvC3.vorschau.empfaenger.join() === "Test, Konto [75]" &&
+           wvC3.vorschau.am === wvLokal(wvHeuteUtc()) && enthaelt(wvC3.warnungen, "schon die Wiedervorlage 'Frist Kuendigung'"), JSON.stringify(wvC3));
+    var wvLang = ""; for (var wl = 0; wl < 130; wl++) wvLang += "x";
+    pruefe("elo_reminder_create: name ueber 128 Zeichen abgelehnt", /128/.test(mpJson(callTool("elo_reminder_create", { objekt: "4711", name: wvLang })).fehler));
+    pruefe("elo_reminder_create: frist vor am abgelehnt", /frist liegt vor am/.test(mpJson(callTool("elo_reminder_create", { objekt: "4711", am: "2028-09-02", frist: "2028-09-01" })).fehler));
+    pruefe("elo_reminder_create: falsches Datum abgelehnt", /Datum/.test(mpJson(callTool("elo_reminder_create", { objekt: "4711", am: "morgen" })).fehler));
+    pruefe("elo_reminder_create: falsche prio abgelehnt", /prio/.test(mpJson(callTool("elo_reminder_create", { objekt: "4711", prio: "dringend" })).fehler));
+    pruefe("elo_reminder_create: geloeschtes Objekt gewarnt", enthaelt(mpJson(callTool("elo_reminder_create", { objekt: "4713" })).warnungen, "als geloescht markiert"));
+    pruefe("elo_reminder_create: Vergangenheit gewarnt", enthaelt(mpJson(callTool("elo_reminder_create", { objekt: "4711", am: "2020-01-01" })).warnungen, "Vergangenheit"));
+    var wvF = mpJson(callTool("elo_reminder_create", { objekt: "4711" }));
+    wvSetzen(600, 4711, "Neu dazwischen", "20280101230000", "", 5, "Muster, Max");
+    pruefe("elo_reminder_create: neue Wiedervorlage am Objekt seit der Vorschau -> abgelehnt", /geaendert/.test(mpJson(callTool("elo_reminder_create", { objekt: "4711", token: wvF.token })).fehler));
+    pruefe("elo_reminder_create: anJedesMitglied geht an den Indexserver", (function () {
+      var v = mpJson(callTool("elo_reminder_create", { objekt: "4712", empfaenger: "Beispielgruppe", anJedesMitglied: true }));
+      mpJson(callTool("elo_reminder_create", { objekt: "4712", empfaenger: "Beispielgruppe", anJedesMitglied: true, token: v.token }));
+      return enthaelt(wvAufrufe, "checkin 3 expand=true") && enthaelt(v.warnungen, "jedes Mitglied");
+    })());
+
+    wvNeu(); wvGesichert = [];
+    var wvD = mpJson(callTool("elo_reminder_delete", { ids: ["91", "92", "999", "91"] }));
+    pruefe("elo_reminder_delete ids: Vorschau, doppelte einmal, unbekannte ausgelassen, nichts geloescht",
+           wvD.vorschau.anzahl === 2 && wvD.vorschau.ausgelassen.length === 1 && wvD.vorschau.ausgelassen[0].id === "999" && enthaelt(wvD.warnungen, "Endgueltig") &&
+           wvAufrufe.join().indexOf("delete") < 0 && wvD.vorschau.wiedervorlagen[0].objekt === "Vertrag Muster", JSON.stringify(wvD));
+    var wvD2 = mpJson(callTool("elo_reminder_delete", { ids: ["91", "92", "999", "91"], token: wvD.token }));
+    pruefe("elo_reminder_delete: loescht, Sicherung vorher mit allen Angaben, zurueckgelesen",
+           wvD2.ergebnis.geloescht === 2 && enthaelt(wvAufrufe, "delete 91+92") && WV["91"].isDeleted() && !WV["93"].isDeleted() &&
+           wvGesichert.length === 1 && wvGesichert[0].inhalt.wiedervorlagen.length === 2 && wvGesichert[0].inhalt.wiedervorlagen[0].promptDateIso === "20280901220000",
+           JSON.stringify(wvD2) + wvAufrufe.join());
+    pruefe("elo_reminder_delete: schon geloescht -> nichts zu loeschen", /Nichts zu loeschen/.test(mpJson(callTool("elo_reminder_delete", { ids: ["91"] })).fehler));
+
+    wvNeu();
+    var wvDo = mpJson(callTool("elo_reminder_delete", { objekt: "4711" }));
+    pruefe("elo_reminder_delete objekt: alle Empfaenger dieses Objekts", wvDo.vorschau.anzahl === 2 && wvDo.vorschau.auswahl.art === "Objekt", JSON.stringify(wvDo.vorschau));
+    var wvDb = mpJson(callTool("elo_reminder_delete", { objekt: "4711", benutzer: "75" }));
+    pruefe("elo_reminder_delete objekt + benutzer: nur dieser Empfaenger (ohne Gruppe)", wvDb.vorschau.anzahl === 1 && wvDb.vorschau.wiedervorlagen[0].id === "91", JSON.stringify(wvDb.vorschau));
+    var wvDg = mpJson(callTool("elo_reminder_delete", { objekt: "4713" }));
+    pruefe("elo_reminder_delete objekt: auch bei geloeschtem Objekt", wvDg.vorschau && wvDg.vorschau.anzahl === 1 && wvDg.vorschau.wiedervorlagen[0].id === "95", JSON.stringify(wvDg));
+    pruefe("elo_reminder_delete: keine zum Objekt", /Keine Wiedervorlagen/.test(mpJson(callTool("elo_reminder_delete", { objekt: "4712", benutzer: "75" })).fehler));
+    pruefe("elo_reminder_delete: ids und objekt zusammen abgelehnt", /Entweder ids oder objekt/.test(mpJson(callTool("elo_reminder_delete", { ids: ["91"], objekt: "4711" })).fehler) &&
+           /Entweder ids oder objekt/.test(mpJson(callTool("elo_reminder_delete", {})).fehler));
+    pruefe("elo_reminder_delete: benutzer nur mit objekt", /nur zusammen mit objekt/.test(mpJson(callTool("elo_reminder_delete", { ids: ["91"], benutzer: "75" })).fehler));
+    var wvG = mpJson(callTool("elo_reminder_delete", { ids: ["91"] }));
+    WV["91"].setPromptDateIso("20290101230000");
+    pruefe("elo_reminder_delete: seit der Vorschau verschoben -> abgelehnt", /geaendert/.test(mpJson(callTool("elo_reminder_delete", { ids: ["91"], token: wvG.token })).fehler) && !WV["91"].isDeleted());
+  } else {
+    pruefe("gesperrtes Anlegen/Loeschen von Wiedervorlagen wird abgelehnt", /nicht freigeschaltet/.test(mpJson(callTool("elo_reminder_create", { objekt: "4711" })).fehler) &&
+           /nicht freigeschaltet/.test(mpJson(callTool("elo_reminder_delete", { ids: ["91"] })).fehler));
+  }
+} finally {
+  ELO.ix = wvIxEcht; ELO.connect = wvConnEcht; protokoll = wvProtEcht; jsonSichern = wvSichEcht; warte = wvWarteEcht;
 }
 
 OUT.println("");

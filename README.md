@@ -6,7 +6,7 @@
 
 [![Getestet mit ELO 25](https://img.shields.io/badge/getestet%20mit-ELO%2025%20(IX%2025.00)-0067b8)](#voraussetzungen)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![57 Werkzeuge](https://img.shields.io/badge/Werkzeuge-57-2ea44f)](#werkzeuge)
+[![60 Werkzeuge](https://img.shields.io/badge/Werkzeuge-60-2ea44f)](#werkzeuge)
 [![Vorschau und Token](https://img.shields.io/badge/Schreiben-Vorschau%20%2B%20Token-e36209)](#sicherheit)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#voraussetzungen)
@@ -132,7 +132,7 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_workflow_templates` | Alle Workflow-Vorlagen |
 | `elo_workflow` | Vorlage oder laufender/beendeter Workflow im Detail: Knoten, Bearbeiter, Skripte, Formular, JSON-Konfiguration, Verbindungen |
 | `elo_workflows_of_object` | Laufende (mit aktiven Knoten) oder beendete Workflows zu genau einem Objekt |
-| `elo_my_tasks` | Eigene Aufgaben, auch über Gruppen |
+| `elo_my_tasks` | Eigene Aufgaben wie im Aufgabenbereich des Clients, auch über Gruppen: Workflow-Aufgaben und Wiedervorlagen (`art`), alle Prioritäten. `wiedervorlagen=false` nur Workflow-Aufgaben |
 | `elo_workflow_export` | Vorlage als JSON-Bauplan ([Format](docs/BAUPLAN.md)) |
 | `elo_mask` | Verschlagwortungsmaske: Art, Reiter, alle Felder mit Typ, Reiter, Zeile, Spalten, Länge, Pflicht und Rechten. Dazu eine Layout-Prüfung (Reiter ohne Namen, Felder vor Zeile 4, übereinanderliegende Felder, Felder ohne Rechte, Klammern) |
 | `elo_keywords` | Stichwortliste einer Feldgruppe: Anzeigename, Paket, Einträge als Baum, auf Wunsch mit IDs |
@@ -146,6 +146,7 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_colors` | Farbliste des Archivs mit ID, Name (`ELO.COLOR.RED`), Anzeigename, Kurzname und RGB; mit `objekt` die Farbe von bis zu 10 Objekten |
 | `elo_function_read` | Lesende registrierte Funktion aufrufen, nur aus einer festen Liste: `RF_sol_common_service_SordProvider` (Objekte zu IDs, höchstens 50, oder Suche über Masken und Felder, höchstens 300 Treffer). Die Antwort kommt als JSON |
 | `elo_references` | Wo ein Objekt liegt: Hauptablage und alle Verweise mit Pfad und Ordner-ID, auch bei gelöschten Objekten (mit Datum und Konto). Mit `ordner` stattdessen die Einträge eines Ordners, die dort nur Verweise sind, samt ihrer Hauptablage |
+| `elo_reminders` | Wiedervorlagen mit ID, Name, Objekt, Empfänger, Absender, Datum, Frist, Priorität und ob sie fällig sind, auch künftige. Ohne Angabe die des angemeldeten Kontos mit seinen Gruppen, mit `benutzer` die eines anderen Kontos, mit `objekt` alle zu einem Objekt. Wiedervorlagen zu gelöschten Objekten zeigt der Client nicht, mit `geloeschteObjekte` kommen sie mit. Zeiten in Ortszeit, höchstens 50 |
 
 ### Stufe 2: arbeiten (`-Schreiben`)
 
@@ -165,6 +166,8 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_color_set` | Farbe eines Objekts setzen, per ID oder Name; mehrdeutige Namen (zwei Farben heißen „Gelb“) werden abgelehnt. Vorschau bisher → neu mit ID und Name, warnt bei laufendem Workflow, Sicherung, zurücklesen |
 | `elo_reference_set` | Verweise anlegen oder entfernen, als Liste von Objekt und Ordner (höchstens 200). Entfernen nimmt nur Verweise weg, nie die Hauptablage; lehnt Ringe (Ordner in sich selbst) und doppelte Verweise ab. Sicherung der entfernten Verweise, zurücklesen |
 | `elo_move` | Objekte in einen anderen Ordner verschieben wie Ausschneiden und Einfügen, Standard die Hauptablage, mit `von` (bei einem Objekt) einen bestimmten Ablageort, auch einen Verweis. Ordner wandern mit Inhalt. Lehnt Ringe, fremd gesperrte Objekte und Ziele ab, in denen das Objekt schon liegt. Höchstens 200, zurücklesen |
+| `elo_reminder_create` | Wiedervorlage zu einem Objekt anlegen: Text (höchstens 128 Zeichen, Standard „Wiedervorlage: <Kurzbezeichnung>“), Datum (Standard heute), Frist, Beschreibung, Priorität, Empfänger (Standard das eigene Konto, bis 10 Personen oder Gruppen; `anJedesMitglied` löst Gruppen auf). Warnt bei gleicher Wiedervorlage am Objekt und bei gelöschtem Objekt, zurücklesen |
+| `elo_reminder_delete` | Wiedervorlagen löschen, per `ids` oder alle zu einem `objekt` (auch einem gelöschten), optional nur die eines `benutzer`. Endgültig, deshalb vorher Sicherung aller Angaben; neu anlegen geht mit `elo_reminder_create`. Höchstens 200 |
 
 Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, Datum (31.02. wird abgelehnt), Stichwortliste bei „nur Liste". Datumsfelder schreibt der Server im ELO-Format `JJJJMMTT000000`.
 
@@ -208,7 +211,7 @@ Neu laden (ELOas, IX-Skripte) und die Neuanmeldung nach einer Maskenänderung bl
 - **Zugangsdaten:** per DPAPI verschlüsselt, nur für euer Windows-Konto lesbar. Der Vorschalt entschlüsselt sie erst beim Java-Start und gibt sie nur an den Java-Prozess weiter.
 - **Zweistufig:** Erster Aufruf = Prüfung + Vorschau + Token. Das Token gilt 5 Minuten, einmal, nur für exakt dieselben Argumente und nur, wenn sich das Objekt seit der Vorschau nicht verändert hat (Fingerabdruck aus Name, Maske, Indexfeldern, Sperre, Version). Die Hinweise an die KI verlangen, die Vorschau zu zeigen und auf Zustimmung zu warten.
 - **Passwortfelder:** `elo_map` zeigt Werte von Map-Schlüsseln, die auf `_PW` enden oder nach Passwort oder Token aussehen, nur als `***`. `elo_map_set` setzt und leert solche Felder nicht, und die Sicherung enthält nur die geänderten Felder.
-- **Nicht im Code:** endgültiges Löschen, Löschen von Masken, Maskenfeldern und Vertretungen, Notizen und Stempel setzen oder entfernen, Feed-Einträge ändern oder löschen, Rechte rekursiv über Unterordner ändern, Benutzerkonten anlegen oder löschen und deren Funktionsrechte, Gruppen oder Passwörter ändern. Rechte an einem einzelnen Eintrag ändert nur `elo_acl_set` (Stufe 3), als gelöscht markiert nur `elo_delete` (Stufe 3). Das ist nicht abgeschaltet, das gibt es schlicht nicht.
+- **Nicht im Code:** endgültiges Löschen von Objekten, Löschen von Masken, Maskenfeldern und Vertretungen, Notizen und Stempel setzen oder entfernen, Feed-Einträge ändern oder löschen, Rechte rekursiv über Unterordner ändern, Benutzerkonten anlegen oder löschen und deren Funktionsrechte, Gruppen oder Passwörter ändern. Rechte an einem einzelnen Eintrag ändert nur `elo_acl_set` (Stufe 3), als gelöscht markiert nur `elo_delete` (Stufe 3). Das ist nicht abgeschaltet, das gibt es schlicht nicht.
 - **Protokoll:** Jede Ausführung, auch fehlgeschlagene, steht in `%LOCALAPPDATA%\elo-mcp\protokoll-JJJJ-MM.jsonl` (Zeit, Konto, Server, Werkzeug, Argumente, Ergebnis).
 - **Keine Wiederholung beim Schreiben:** Lesewerkzeuge melden sich nach einer abgelaufenen Sitzung einmal neu an. Schreibende nie, damit nichts doppelt passiert.
 - **Registrierte Funktionen:** Ohne Freigabe laufen nur die Funktionen aus der festen Liste in `elo_function_read`, mit Grenzen für die Abfrage. Jede andere geht nur über `elo_function_call` (Stufe 3, zweistufig), weil man einer Funktion nicht ansieht, ob sie schreibt.
@@ -246,6 +249,7 @@ MCP-Clients starten jeden Server einmal je Sitzung. Eine JVM je Sitzung kostet r
 | `src/elo-mcp-notizen.js` | Notizen und Stempel lesen, Map-Felder und Feed lesen (Stufe 1), Map-Felder an Objekt oder Vorgang setzen und Feed-Kommentar schreiben (Stufe 2) |
 | `src/elo-mcp-ergaenzungen.js` | Farben lesen (Stufe 1) und setzen (Stufe 2), lesende registrierte Funktionen (Stufe 1), beliebige registrierte Funktion und Formulardesigner „Aktualisieren“ (Stufe 3) |
 | `src/elo-mcp-ablage.js` | Verweise lesen (Stufe 1), anlegen, entfernen und verschieben (Stufe 2), als gelöscht markieren und wiederherstellen (Stufe 3) |
+| `src/elo-mcp-wiedervorlagen.js` | Wiedervorlagen lesen (Stufe 1), anlegen und löschen (Stufe 2) |
 | `src/elo-mcp-start.js` | Hauptschleife |
 | `test/offline.ps1` | Prüfungen ohne ELO (Protokoll, Stufen, Bauplan, Skripte, Masken) |
 | `test/test-mcp.py` | Aufrufe gegen ein echtes ELO, z. B. `python -I test\test-mcp.py test\beispiel-lesen.json -- -IxUrl <url>` |

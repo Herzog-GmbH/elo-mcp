@@ -17,7 +17,7 @@
  */
 
 var IXC = Packages.de.elo.ix.client;
-var SERVER_NAME = "elo", SERVER_VERSION = "0.14.0";
+var SERVER_NAME = "elo", SERVER_VERSION = "0.15.0";
 var LIMIT = { suche: 50, liste: 300, aufgaben: 50, workflows: 20, aktiveKnoten: 5, textZeichen: 50000, dateiBytes: 20 * 1024 * 1024 };
 
 /* ---------- stdio ---------- */
@@ -42,6 +42,8 @@ function send(obj) {
 
 function S(v) { return (v === null || v === undefined) ? "" : String(v); }
 function trim(s) { return S(s).replace(/^\s+|\s+$/g, ""); }
+/* findFirstTasks sucht ohne Angabe nur Prioritaet 0 (hoch): Aufgaben und Wiedervorlagen mit 1 (mittel) und 2 (niedrig) fehlen sonst. */
+function alleTaskPrios(fi) { fi.setHighestPriority(0); fi.setLowestPriority(2); return fi; }
 function cap(n, def, max) { n = parseInt(n, 10); if (!(n > 0)) n = def; return Math.min(n, max); }
 function fail(msg) { throw { userError: msg }; }
 function isFolder(s) { return s.getType() < 254 || S(s.getId()) === "1"; }  // Wurzel hat einen Sondertyp
@@ -550,20 +552,32 @@ tool("elo_workflows_of_object",
     return { objekt: S(s.getName()), id: S(s.getId()), art: a.beendete ? "beendet" : "aktiv", workflows: res };
   });
 
-tool("elo_my_tasks", "Eigene offene Workflow-Aufgaben (auch ueber Gruppen), neueste zuerst.",
-  { max: { type: "integer", description: "Standard 30, hoechstens " + LIMIT.aufgaben } },
+tool("elo_my_tasks", "Eigene offene Aufgaben wie im Aufgabenbereich des Clients (auch ueber Gruppen), neueste zuerst: Workflow-Aufgaben und Wiedervorlagen " +
+  "(art workflow bzw. wiedervorlage; Wiedervorlagen auch kuenftige, mit faellig). wiedervorlagen=false nur Workflow-Aufgaben.",
+  { max: { type: "integer", description: "Standard 30, hoechstens " + LIMIT.aufgaben },
+    wiedervorlagen: { type: "boolean", description: "Wiedervorlagen mitliefern, Standard true" } },
   [], function (a) {
-    var fti = new IXC.FindTasksInfo(); fti.setInclWorkflows(true); fti.setInclGroup(true);
-    var fr = ELO.ix().findFirstTasks(fti, cap(a.max, 30, LIMIT.aufgaben)), res = [];
+    var mitWv = a.wiedervorlagen !== false;
+    var fti = new IXC.FindTasksInfo(); fti.setInclWorkflows(true); fti.setInclGroup(true); fti.setInclReminders(mitWv); alleTaskPrios(fti);
+    if (mitWv) fti.setSordZ(IXC.SordC.mbMin);
+    var fr = ELO.ix().findFirstTasks(fti, cap(a.max, 30, LIMIT.aufgaben)), res = [], nWf = 0, nWv = 0;
     try {
       var t = fr.getTasks();
       for (var i = 0; t && i < t.length; i++) {
-        var n = t[i].getWfNode(); if (!n) continue;
-        res.push({ workflowId: S(n.getFlowId()), workflow: S(n.getFlowName()), knoten: S(n.getNodeName()), knotenId: S(n.getNodeId()),
-                   objektId: S(n.getObjId()), objekt: S(n.getObjName()), bearbeiter: S(n.getUserName()),
-                   seit: S(n.getActivateDateIso()), frist: S(n.getTimeLimitIso()), ueberfaellig: !!n.isOverTimeLimit() });
+        var n = t[i].getWfNode(), r = mitWv ? t[i].getReminder() : null;
+        if (n) {
+          nWf++;
+          res.push({ art: "workflow", workflowId: S(n.getFlowId()), workflow: S(n.getFlowName()), knoten: S(n.getNodeName()), knotenId: S(n.getNodeId()),
+                     objektId: S(n.getObjId()), objekt: S(n.getObjName()), bearbeiter: S(n.getUserName()),
+                     seit: S(n.getActivateDateIso()), frist: S(n.getTimeLimitIso()), ueberfaellig: !!n.isOverTimeLimit() });
+        } else if (r) {
+          nWv++;
+          var w = wvKurz(r, t[i].getSord()), e = { art: "wiedervorlage" };
+          for (var k in w) e[k] = w[k];
+          res.push(e);
+        }
       }
-      return { aufgaben: res.length, mehrVorhanden: !!fr.isMoreResults(), liste: res };
+      return { aufgaben: res.length, workflows: nWf, wiedervorlagen: mitWv ? nWv : undefined, mehrVorhanden: !!fr.isMoreResults(), liste: res };
     } finally { try { ELO.ix().findClose(fr.getSearchId()); } catch (e) {} }
   });
 
