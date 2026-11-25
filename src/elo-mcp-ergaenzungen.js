@@ -24,7 +24,9 @@ var LIMIT_RF = { parameter: 20000, antwort: 50000, vorschau: 4000, ids: 50, tref
 var RX_RF = /^RF_[A-Za-z0-9_]{1,200}$/;
 
 function jsonSichern(name, inhalt) {
-  var f = new java.io.File(sicherungsOrdner(), name + "-" + zeitstempel() + ".json");
+  var basis = name + "-" + zeitstempel(), f = new java.io.File(sicherungsOrdner(), basis + ".json");
+  // Zwei Sicherungen in derselben Sekunde duerfen sich nicht ueberschreiben.
+  for (var n = 2; f.exists() && n < 1000; n++) f = new java.io.File(sicherungsOrdner(), basis + "-" + n + ".json");
   var w = new java.io.OutputStreamWriter(new java.io.FileOutputStream(f), "UTF-8");
   try { w.write(JSON.stringify(inhalt, null, 1)); } finally { w.close(); }
   return S(f.getAbsolutePath());

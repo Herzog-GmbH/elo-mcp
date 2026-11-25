@@ -6,7 +6,7 @@
 
 [![Getestet mit ELO 25](https://img.shields.io/badge/getestet%20mit-ELO%2025%20(IX%2025.00)-0067b8)](#voraussetzungen)
 [![MCP stdio](https://img.shields.io/badge/MCP-stdio-6f42c1)](https://modelcontextprotocol.io/)
-[![62 Werkzeuge](https://img.shields.io/badge/Werkzeuge-62-2ea44f)](#werkzeuge)
+[![64 Werkzeuge](https://img.shields.io/badge/Werkzeuge-64-2ea44f)](#werkzeuge)
 [![Vorschau und Token](https://img.shields.io/badge/Schreiben-Vorschau%20%2B%20Token-e36209)](#sicherheit)
 <br>
 [![Windows](https://img.shields.io/badge/Plattform-Windows-0078d4)](#voraussetzungen)
@@ -148,6 +148,7 @@ claude mcp add elo --scope user -- powershell -NoProfile -ExecutionPolicy Bypass
 | `elo_function_read` | Lesende registrierte Funktion aufrufen, nur aus einer festen Liste: `RF_sol_common_service_SordProvider` (Objekte zu IDs, höchstens 50, oder Suche über Masken und Felder, höchstens 300 Treffer). Die Antwort kommt als JSON |
 | `elo_references` | Wo ein Objekt liegt: Hauptablage und alle Verweise mit Pfad und Ordner-ID, auch bei gelöschten Objekten (mit Datum und Konto). Mit `ordner` stattdessen die Einträge eines Ordners, die dort nur Verweise sind, samt ihrer Hauptablage |
 | `elo_reminders` | Wiedervorlagen mit ID, Name, Objekt, Empfänger, Absender, Datum, Frist, Priorität und ob sie fällig sind, auch künftige. Ohne Angabe die des angemeldeten Kontos mit seinen Gruppen, mit `benutzer` die eines anderen Kontos, mit `objekt` alle zu einem Objekt. Wiedervorlagen zu gelöschten Objekten zeigt der Client nicht, mit `geloeschteObjekte` kommen sie mit. Zeiten in Ortszeit, höchstens 50 |
+| `elo_display_profiles` | Anzeigeprofile des ELO Client wie im Dialog „Anzeigeprofile verwalten“ mit „Benutzer auswählen“: je Profil Name, GUID und Aufteilung (Inhalt, Formular, Feed, Aufgabe, Volltext, Webanwendung je Bereich), dazu die Zuordnung zu den Funktionsbereichen (Ablage, Postbox, Klemmbrett, Aufgaben, Bearbeitung, Suche) und zu Masken (mit Maskennamen). Quelle je Wert (eigen, Optionengruppe, Global), ohne gespeicherte Profile die Standardprofile des Clients. Zeigt die Sitzungen des Kontos (offener ELO Client) |
 
 ### Stufe 2: arbeiten (`-Schreiben`)
 
@@ -195,6 +196,7 @@ Feldwerte werden vorher gegen die Maske geprüft: Feld vorhanden, Länge, Zahl, 
 | `elo_function_call` | Beliebige registrierte Funktion (`RF_…`) aufrufen. Die Vorschau zeigt Funktion und Parameter; was die Funktion tut, prüft der Server nicht |
 | `elo_delete` | Objekte **als gelöscht markieren** wie im Client, nie endgültig: Sie bleiben unter „gelöschte Einträge“ sichtbar und kommen mit `elo_restore` zurück. Ohne `mitInhalt` nur Ordner und Ordnerbäume ohne Dokumente und ohne Verweise. Die Vorschau zählt Unterordner, Dokumente und Verweise und warnt, wenn ein Objekt oder etwas darin noch von außerhalb verwiesen wird. `ueberspringen` lässt Objekte aus, die die Bedingung nicht erfüllen. Sicherung (IDs, Pfade, Inhalt) vorher, höchstens 200 Objekte und 2000 Einträge in den Bäumen |
 | `elo_restore` | Gelöschte Objekte wiederherstellen. Ordner kommen mit allem zurück, was ab ihrem Löschzeitpunkt (minutengenau) darin gelöscht wurde, auch mit in dieser Zeit entfernten Verweisen; früher Gelöschtes bleibt gelöscht. Die Vorschau zählt, was mitkommt und was gelöscht bleibt. `einzeln` holt nur das Objekt selbst. Ein gelöschter Elternordner muss zuerst oder im selben Aufruf zurück |
+| `elo_display_profile_set` | Ein Anzeigeprofil von einem Vorbild (Standard: eigenes Konto) auf Benutzer übertragen oder mit `neu` aus einer Aufteilung neu anlegen (Bereiche links │ oben über Mitte links │ Mitte rechts │ rechts, Elemente je Bereich als Reiter, Breiten in Prozent; gleicher Name ergibt bei allen Zielen dieselbe GUID). Gruppen werden in ihre Benutzer aufgelöst (höchstens 50). Wahlweise Funktionsbereichen und/oder Masken zuordnen; andere Profile und Zuordnungen bleiben. Hat ein Ziel noch keine Profile, kommen die Standardprofile des Clients mit (sonst sähe es nur das neue). Vorschau je Ziel bisher → neu, warnt bei offenem ELO Client und gleichem Profilnamen; Sicherung vorher, zurücklesen. Wirkt ab dem nächsten Start des ELO Client, nicht im Web Client |
 
 Die Prüfungen beim Bauen stammen alle aus echten Störungen:
 
@@ -252,6 +254,7 @@ MCP-Clients starten jeden Server einmal je Sitzung. Eine JVM je Sitzung kostet r
 | `src/elo-mcp-ergaenzungen.js` | Farben lesen (Stufe 1) und setzen (Stufe 2), lesende registrierte Funktionen (Stufe 1), beliebige registrierte Funktion und Formulardesigner „Aktualisieren“ (Stufe 3) |
 | `src/elo-mcp-ablage.js` | Verweise lesen (Stufe 1), anlegen, entfernen und verschieben (Stufe 2), als gelöscht markieren und wiederherstellen (Stufe 3) |
 | `src/elo-mcp-wiedervorlagen.js` | Wiedervorlagen lesen (Stufe 1), anlegen und löschen (Stufe 2) |
+| `src/elo-mcp-anzeigeprofile.js` | Anzeigeprofile des ELO Client lesen (Stufe 1) und übertragen (Stufe 3) |
 | `src/elo-mcp-start.js` | Hauptschleife |
 | `test/offline.ps1` | Prüfungen ohne ELO (Protokoll, Stufen, Bauplan, Skripte, Masken) |
 | `test/test-mcp.py` | Aufrufe gegen ein echtes ELO, z. B. `python -I test\test-mcp.py test\beispiel-lesen.json -- -IxUrl <url>` |

@@ -1,7 +1,7 @@
 /*
  * offline.js - Pruefungen ohne ELO-Verbindung: Protokoll, Stufen, Vorschau und Token,
  * Datumspruefung, Bauplan-, Skript- und Maskenpruefungen. Wird von test\offline.ps1 nach den Quellen geladen
- * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js, elo-mcp-vorgaenge.js, elo-mcp-notizen.js, elo-mcp-ergaenzungen.js, elo-mcp-ablage.js, elo-mcp-wiedervorlagen.js - ohne elo-mcp-start.js).
+ * (elo.js, elo-mcp.js, elo-mcp-schreiben.js, elo-mcp-bauen.js, elo-mcp-masken.js, elo-mcp-benutzer.js, elo-mcp-rechte.js, elo-mcp-vorgaenge.js, elo-mcp-notizen.js, elo-mcp-ergaenzungen.js, elo-mcp-ablage.js, elo-mcp-wiedervorlagen.js, elo-mcp-anzeigeprofile.js - ohne elo-mcp-start.js).
  */
 
 var OUT = REAL_OUT, fehlerZahl = 0, okZahl = 0;
@@ -20,7 +20,7 @@ pruefe("initialize: Hinweise nennen die Stufen", init.result.instructions.indexO
 
 var liste = handle({ jsonrpc: "2.0", id: 2, method: "tools/list" }).result.tools, namen = {};
 for (var i = 0; i < liste.length; i++) namen[liste[i].name] = true;
-var erwartet = 27 + (SCHREIBEN_ERLAUBT ? 16 : 0) + (BAUEN_ERLAUBT ? 19 : 0);
+var erwartet = 28 + (SCHREIBEN_ERLAUBT ? 16 : 0) + (BAUEN_ERLAUBT ? 20 : 0);
 pruefe("tools/list: " + erwartet + " Werkzeuge bei Stufen " + stufenText(), liste.length === erwartet, liste.length);
 pruefe("tools/list: Schreibwerkzeug nur mit -Schreiben", !!namen.elo_set_fields === SCHREIBEN_ERLAUBT);
 pruefe("tools/list: Bauwerkzeug nur mit -Bauen", !!namen.elo_workflow_build === BAUEN_ERLAUBT);
@@ -1679,6 +1679,164 @@ pruefe("maskeDateiSchreiben: nur .json", /\.json/.test(mfF1), mfF1);
 pruefe("maskeDateiSchreiben: nur absolut", /absoluten/.test(mfF2), mfF2);
 pruefe("maskeDateiSchreiben: Ordner muss bestehen", /gibt es nicht/.test(mfF3), mfF3);
 mfDatei["delete"](); mfFremd["delete"](); mfOrdner["delete"]();
+
+
+/* ---------- Anzeigeprofile (elo_display_profiles, elo_display_profile_set) ---------- */
+
+var apP = ELO.PILCROW, apGx = "(11111111-2222-3333-4444-555555555555)", apGy = "(AAAAAAAA-2222-3333-4444-555555555555)";
+var apWertX = "3" + apP + "Rechnung" + apP + "Feed=0,RightColumn;Formular=0,MidLeftColumn;DocumentPreview=0,MidRightColumn;Task=0,MidLeftColumn;" + apP +
+              "0,RightColumn=81;0,MiddleColumns=53;" + apP + "0,MidLeftColumn=1;" + apP + apGx;
+var apWertY = "3" + apP + "Rechnung" + apP + "DocumentPreview=0,MidRightColumn;" + apP + apP + apP + apGy;
+var apPx = apProfilLesen(apWertX);
+pruefe("apProfilLesen: Name, GUID, Aufteilung, Teiler, Reiter", apPx.name === "Rechnung" && apPx.guid === apGx && apPx.aufteilung["Mitte links"].join() === "Formular,Aufgabe" &&
+       apPx.aufteilung["rechts"].join() === "Feed" && apPx.aufteilung["Mitte rechts"].join() === "Inhalt" && apPx.teiler.MiddleColumns === 53 && apPx.aktiverReiter["Mitte links"] === 1, JSON.stringify(apPx));
+pruefe("apProfilLesen: eingebautes Profil bekommt den Client-Namen, leer = geloescht",
+       apProfilLesen(AP_EINGEBAUT[apGuidE("03")].wert).name === "Formularbearbeitung" && apProfilLesen(AP_EINGEBAUT[apGuidE("03")].wert).eingebaut === true && apProfilLesen("") === null);
+pruefe("apGuid: mit/ohne Klammern, klein", apGuid("11111111-2222-3333-4444-555555555555") === apGx && apGuid("(aaaaaaaa-2222-3333-4444-555555555555)") === apGy && apGuid("Rechnung") === "");
+pruefe("apBereichNr: Namen und Nummern", apBereichNr("Aufgaben") === 4 && apBereichNr("suche") === 6 && apBereichNr("In Bearbeitung") === 5 && apBereichNr("1") === 1 &&
+       /unbekannt/.test(fange(function () { apBereichNr("Feed"); })));
+
+var apIxEcht = ELO.ix, apConnEcht = ELO.connect, apSichernEcht = jsonSichern, AP = {}, apGesichert = [], apSchreibAufrufe = [];
+var AP_NUTZER = { "75": ["Test, Konto", 1, []], "5": ["Muster, Max", 1, [3]], "6": ["Leer, Lena", 1, [3]], "3": ["Freigeber", 0, []] };
+function apNutzer(w) {
+  var k = String(w);
+  for (var id in AP_NUTZER) if (AP_NUTZER[id][0] === k) k = id;
+  var e = AP_NUTZER[k];
+  if (!e) throw "[ELOIX:5023]unbekannt " + w;
+  var u = new IXC.UserInfo(); u.setId(parseInt(k, 10)); u.setName(e[0]); u.setType(e[1]); u.setFlags(0);
+  return u;
+}
+function apKv(o) { var l = []; for (var k in o) l.push(new IXC.KeyValue(k, o[k])); return l; }
+function apNeu() {
+  AP = {}; apGesichert = []; apSchreibAufrufe = [];
+  var e = {}; e[AP_PRE + apGx] = apWertX; e[AP_PRE + apGuidE("03")] = AP_EINGEBAUT[apGuidE("03")].wert; e[AP_USED + "0"] = apGuidE("03"); e[AP_USED + "4"] = apGx;
+  e[AP_MASK + "0"] = "202#" + apGx; e[AP_MASK + "1"] = AP_END; e["EloJ.S.EViewActiveTab.AR.1"] = "Formular";
+  AP["75"] = e;
+  var m = {}; m[AP_PRE + apGuidE("03")] = AP_EINGEBAUT[apGuidE("03")].wert; m[AP_PRE + apGy] = apWertY; m[AP_USED + "4"] = apGuidE("03");
+  m[AP_MASK + "0"] = "100#" + apGuidE("03"); m[AP_MASK + "1"] = "300#" + apGuidE("03"); m[AP_MASK + "2"] = "301#" + apGuidE("03"); m[AP_MASK + "3"] = AP_END;
+  AP["5"] = m;
+  AP["6"] = { "EloJ.S.DlgSize.X": "1" };
+}
+ELO.ix = function () {
+  return {
+    checkoutUserProfile: function (up) {
+      var mine = AP[String(up.getUserId())] || {};
+      return { getUserOptions: function () { return apKv(mine); }, getGroupOptions: function () { return []; }, getDefaultOptions: function () { return apKv({ "EloJ.S.Anders": "x" }); },
+               getGroupId: function () { return -1; } };
+    },
+    checkinUserProfile: function (up) {
+      var uid = String(up.getUserId()), o = up.getOptions(), t = AP[uid] = AP[uid] || {};
+      apSchreibAufrufe.push("checkin " + uid + " " + o.length);
+      for (var i = 0; i < o.length; i++) t[String(o[i].getKey())] = String(o[i].getValue());
+    },
+    deleteUserProfile: function (up) {
+      var uid = String(up.getUserId()), o = up.getOptions();
+      apSchreibAufrufe.push("delete " + uid + " " + o.length);
+      for (var i = 0; i < o.length; i++) delete AP[uid][String(o[i].getKey())];
+    },
+    checkoutUser: function (w) { return apNutzer(w); },
+    checkoutUsers: function (ids, art) {
+      if (art === IXC.CheckoutUsersC.USERS_OF_GROUP_RECURSIVE_RAW) return [apNutzer("5"), apNutzer("6")];
+      if (art === IXC.CheckoutUsersC.SESSION_USERS_RAW) {
+        if (String(ids[0]) !== "5") return [];
+        var u = apNutzer("5"), h = new java.util.HashMap(); h.put("clientApp.name", "ELO Java Client");
+        return [{ getId: function () { return 5; }, getSessions: function () { return [{ getSessionOptions: function () { return h; }, getClientComputer: function () { return "PC-1"; } }]; } }];
+      }
+      return [];
+    },
+    checkoutDocMask: function (v) {
+      var masken = { "202": "Einkauf", "100": "Beleg", "300": "Vertrag", "301": "Vertrag alt" }, id = null;
+      for (var k in masken) if (k === String(v) || masken[k] === String(v)) id = k;
+      if (!id) throw "[ELOIX:5023]Maske " + v;
+      return { getId: function () { return parseInt(id, 10); }, getName: function () { return masken[id]; } };
+    }
+  };
+};
+ELO.connect = function () { return { getLoginResult: function () { return { getUser: function () { return apNutzer("75"); } }; } }; };
+jsonSichern = function (name, inhalt) { apGesichert.push({ name: name, inhalt: inhalt }); return "sicherung-" + name; };
+var apProtokollEcht = protokoll; protokoll = function () {};
+try {
+  apNeu(); apMaskCache = {};
+  var apL = mpJson(callTool("elo_display_profiles", {}));
+  var apAuf = apL.funktionsbereiche.filter(function (x) { return x.bereich === "Aufgaben"; })[0], apAbl = apL.funktionsbereiche.filter(function (x) { return x.bereich === "Ablage"; })[0];
+  pruefe("elo_display_profiles: eigenes Konto, Profile mit Aufteilung", apL.konto === "Test, Konto [75]" && apL.profile.length === 2 &&
+         apL.profile.filter(function (x) { return x.name === "Rechnung"; })[0].aufteilung["Mitte links"].join() === "Formular,Aufgabe", JSON.stringify(apL));
+  pruefe("elo_display_profiles: Bereich zugeordnet, sonst Rueckfall auf Bereich 0", apAuf.profil === "Rechnung" && apAuf.guid === apGx && apAbl.profil === "Formularbearbeitung" && /Rueckfall/.test(apAbl.quelle), JSON.stringify(apL.funktionsbereiche));
+  pruefe("elo_display_profiles: Maske mit Namen, verwendetIn", apL.masken.length === 1 && apL.masken[0].maske === "Einkauf" && apL.masken[0].profil === "Rechnung" &&
+         apL.profile.filter(function (x) { return x.guid === apGx; })[0].verwendetIn.join() === "Aufgaben,Maske Einkauf", JSON.stringify(apL));
+  var apLeer = mpJson(callTool("elo_display_profiles", { benutzer: "6" }));
+  pruefe("elo_display_profiles: ohne Profile die Standardprofile des Clients", apLeer.profile.length === 5 &&
+         apLeer.funktionsbereiche.filter(function (x) { return x.bereich === "Aufgaben"; })[0].profil === "Formularbearbeitung" &&
+         apLeer.funktionsbereiche.filter(function (x) { return x.bereich === "Postbox"; })[0].profil === "Klassisch" && /Standardprofile/.test(apLeer.hinweise.join()), JSON.stringify(apLeer));
+  var apM = mpJson(callTool("elo_display_profiles", { benutzer: "Muster, Max" }));
+  pruefe("elo_display_profiles: offener Java Client wird gemeldet", apM.sitzungen.length === 1 && apM.sitzungen[0].desktop === true && /Neustart/.test(apM.hinweise.join()), JSON.stringify(apM));
+  pruefe("elo_display_profiles: Gruppe ohne Optionengruppe", /keine Optionengruppe/.test(mpJson(callTool("elo_display_profiles", { benutzer: "Freigeber" })).hinweise.join()));
+
+  if (BAUEN_ERLAUBT) {
+    var apArgs = { profil: "Rechnung", ziele: ["Freigeber"], bereiche: ["Aufgaben"], masken: ["Einkauf"] };
+    var apV = mpJson(callTool("elo_display_profile_set", apArgs));
+    var apVm = apV.vorschau.ziele.filter(function (x) { return /Muster/.test(x.ziel); })[0], apVl = apV.vorschau.ziele.filter(function (x) { return /Leer/.test(x.ziel); })[0];
+    pruefe("elo_display_profile_set: Vorschau ohne Schreiben, Gruppe aufgeloest", apV.token && apSchreibAufrufe.length === 0 && apV.vorschau.zielbenutzer === 2 && /Gruppe, 2 Benutzer/.test(apV.vorschau.zieleAngegeben[0]), JSON.stringify(apV));
+    pruefe("elo_display_profile_set: Vorschau bisher/neu je Ziel", apVm.profil.bisher === "fehlt" && apVm.bereiche[0].bisher === "Formularbearbeitung" && apVm.bereiche[0].neu === "Rechnung" &&
+           apVm.masken[0].bisher === "keine Zuordnung" && apVm.masken[0].neu === "Rechnung", JSON.stringify(apVm));
+    pruefe("elo_display_profile_set: Warnungen offener Client und gleicher Name", /ELO Client angemeldet/.test(apV.warnungen.join()) && /zwei mit diesem Namen/.test(apV.warnungen.join()), JSON.stringify(apV.warnungen));
+    pruefe("elo_display_profile_set: leeres Ziel bekommt Standardprofile", /Standardprofile|mitgeschrieben/.test(apVl.standardprofile), JSON.stringify(apVl));
+    var apA = mpJson(callTool("elo_display_profile_set", { profil: "Rechnung", ziele: ["Freigeber"], bereiche: ["Aufgaben"], masken: ["Einkauf"], token: apV.token }));
+    var m5 = AP["5"], m6 = AP["6"];
+    pruefe("elo_display_profile_set: Profil, Bereich und Maskenliste sortiert mit END", m5[AP_PRE + apGx] === apWertX && m5[AP_USED + "4"] === apGx &&
+           m5[AP_MASK + "0"] === "100#" + apGuidE("03") && m5[AP_MASK + "1"] === "202#" + apGx && m5[AP_MASK + "2"] === "300#" + apGuidE("03") && m5[AP_MASK + "3"] === "301#" + apGuidE("03") &&
+           m5[AP_MASK + "4"] === AP_END && m5[AP_PRE + apGy] === apWertY, JSON.stringify(m5));
+    pruefe("elo_display_profile_set: leeres Ziel mit fuenf Standardprofilen und Zuordnung", m6[AP_PRE + apGuidE("00")] === AP_EINGEBAUT[apGuidE("00")].wert && m6[AP_PRE + apGx] === apWertX &&
+           m6[AP_USED + "2"] === apGuidE("00") && m6[AP_USED + "4"] === apGx && m6[AP_USED + "1"] === apGuidE("04") && m6[AP_MASK + "0"] === "202#" + apGx && m6[AP_MASK + "1"] === AP_END &&
+           m6["EloJ.S.DlgSize.X"] === "1", JSON.stringify(m6));
+    pruefe("elo_display_profile_set: Sicherung vorher, Ruecklesen ok", apA.ergebnis && apA.ergebnis.geaendert === 2 && apA.ergebnis.ziele[0].rueckgelesen === "ok, wie geplant" &&
+           apGesichert.length === 1 && apGesichert[0].inhalt.ziele.length === 2 && apGesichert[0].inhalt.ziele[0].vorher[AP_MASK + "3"] === AP_END, JSON.stringify(apA));
+    var apV2 = mpJson(callTool("elo_display_profile_set", apArgs));
+    pruefe("elo_display_profile_set: zweiter Lauf hat nichts zu tun", apV2.vorschau.zuAendern === 0, JSON.stringify(apV2.vorschau));
+    // Maske entfernt aus kuerzerer Liste: alte hoehere Indizes loeschen
+    AP["5"][AP_MASK + "0"] = "202#" + apGx; AP["5"][AP_MASK + "1"] = AP_END; AP["5"][AP_MASK + "2"] = "300#X"; AP["5"][AP_MASK + "3"] = "301#X"; AP["5"][AP_MASK + "4"] = AP_END;
+    var apPl = apZielPlan({ id: "5", name: "Muster, Max" }, apPx, [], [{ id: "100", name: "Beleg" }], []);
+    pruefe("elo_display_profile_set: ueberzaehlige Listeneintraege werden geloescht", apPl.setzen[AP_MASK + "2"] === AP_END && apPl.loeschen.join() === AP_MASK + "3," + AP_MASK + "4", JSON.stringify(apPl.setzen) + JSON.stringify(apPl.loeschen));
+    pruefe("elo_display_profile_set: unbekanntes Profil abgelehnt", /gibt es bei/.test(mpJson(callTool("elo_display_profile_set", { profil: "Gibtsnicht", ziele: "5" })).fehler));
+    AP["75"][AP_PRE + apGy] = apWertY;
+    pruefe("elo_display_profile_set: mehrdeutiger Name verlangt GUID", /GUID angeben/.test(mpJson(callTool("elo_display_profile_set", { profil: "Rechnung", ziele: "5" })).fehler));
+    pruefe("elo_display_profile_set: per GUID eindeutig", !!mpJson(callTool("elo_display_profile_set", { profil: apGy, ziele: "6" })).token);
+    pruefe("elo_display_profile_set: eingebautes Profil beim Vorbild", !!mpJson(callTool("elo_display_profile_set", { profil: "Formularbearbeitung", ziele: "6", bereiche: ["Suche"] })).token);
+    // Neues Profil aus einer Aufteilung
+    var apW = [], apN = apNeuesProfil({ name: "Rechnungsfreigabe", aufteilung: { mitteLinks: ["Formular"], mitteRechts: ["Inhalt"], rechts: ["Feed"] } }, apW);
+    var apNw = "3" + apP + "Rechnungsfreigabe" + apP + "Formular=0,MidLeftColumn;DocumentPreview=0,MidRightColumn;Feed=0,RightColumn;Cover=0,MidLeftColumn;Task=0,MidLeftColumn;" + apP +
+               "0,RightColumn=80;" + apP + apP + apN.guid;
+    pruefe("apNeuesProfil: drei Spalten Formular | Inhalt | Feed, wie der Client es speichert", apN.wert === apNw && /immer in den Bereich von Formular/.test(apW.join()) &&
+           apN.aufteilung["Mitte links"].join() === "Formular,Uebergeordnete Metadaten,Aufgabe" && apN.teiler.RightColumn === 80 && apN.teiler.MiddleColumns === undefined, apN.wert + " " + JSON.stringify(apW));
+    var apN2 = apNeuesProfil({ name: "rechnungsfreigabe", aufteilung: { mitteRechts: ["Inhalt"] } }, []), apN3 = apNeuesProfil({ name: "Anderes", aufteilung: { mitteRechts: ["Inhalt"] } }, []);
+    pruefe("apNeuesProfil: GUID aus dem Namen, stabil, je Name anders", /^\([0-9A-F\-]{36}\)$/.test(apN.guid) && apN2.guid === apN.guid && apN3.guid !== apN.guid && !AP_EINGEBAUT[apN.guid], apN.guid + " " + apN3.guid);
+    var apNb = apNeuesProfil({ name: "X", aufteilung: { links: ["Aufgabe", "Formular"], oben: ["Inhalt"], mitteRechts: ["Feed"] }, breiten: { links: 25, oben: 60 } }, apW = []);
+    pruefe("apNeuesProfil: Reiter, Breiten links/oben, Warnungen Aufgabe", /Task=0,LeftColumn;Formular=0,LeftColumn;/.test(apNb.wert) && apNb.teiler.LeftColumn === 25 && apNb.teiler.TopBottom === 60 &&
+           apNb.teiler.MiddleColumns === undefined && /Java Client 20/.test(apW.join()) && /dasselbe Workflow-Formular/.test(apW.join()), apNb.wert + JSON.stringify(apW));
+    pruefe("apNeuesProfil: Fehler", /unbekannt/.test(fange(function () { apNeuesProfil({ name: "X", aufteilung: { mitte: ["Inhalt"] } }, []); })) &&
+           /unbekannt/.test(fange(function () { apNeuesProfil({ name: "X", aufteilung: { rechts: ["Metadaten"] } }, []); })) &&
+           /zweimal/.test(fange(function () { apNeuesProfil({ name: "X", aufteilung: { rechts: ["Feed"], links: ["feed"] } }, []); })) &&
+           /5 bis 95/.test(fange(function () { apNeuesProfil({ name: "X", aufteilung: { rechts: ["Feed"], mitteRechts: ["Inhalt"] }, breiten: { rechts: 0 } }, []); })) &&
+           /ohne ;/.test(fange(function () { apNeuesProfil({ name: "a;b", aufteilung: { rechts: ["Feed"] } }, []); })) &&
+           /leer/.test(fange(function () { apNeuesProfil({ name: "X", aufteilung: {} }, []); })));
+    var apNeuArgs = { neu: { name: "Rechnungsfreigabe", aufteilung: { mitteLinks: ["Formular"], mitteRechts: ["Inhalt"], rechts: ["Feed"] } }, ziele: "6", bereiche: ["Aufgaben"], masken: ["Einkauf"] };
+    var apNV = mpJson(callTool("elo_display_profile_set", apNeuArgs));
+    pruefe("elo_display_profile_set neu: Vorschau ohne Vorbild, mit Wert", /neu anlegen/.test(apNV.vorschau.aktion) && apNV.vorschau.vorbild === undefined && apNV.vorschau.profil.wert === apNw &&
+           apNV.vorschau.ziele[0].profil.bisher === "fehlt", JSON.stringify(apNV.vorschau));
+    apNeuArgs.token = apNV.token;
+    var apNA = mpJson(callTool("elo_display_profile_set", apNeuArgs));
+    delete apNeuArgs.token;
+    pruefe("elo_display_profile_set neu: geschrieben, Bereich und Maske", apNA.ergebnis && apNA.ergebnis.geaendert === 1 && AP["6"][AP_PRE + apN.guid] === apNw && AP["6"][AP_USED + "4"] === apN.guid &&
+           AP["6"][AP_MASK + "0"] === "202#" + apN.guid, JSON.stringify(apNA) + JSON.stringify(AP["6"]));
+    pruefe("elo_display_profile_set neu: zweiter Lauf nichts zu tun", mpJson(callTool("elo_display_profile_set", apNeuArgs)).vorschau.zuAendern === 0);
+    pruefe("elo_display_profile_set: neu und profil zusammen abgelehnt", /Entweder neu/.test(mpJson(callTool("elo_display_profile_set", { neu: apNeuArgs.neu, profil: "Rechnung", ziele: "6" })).fehler));
+    pruefe("elo_display_profile_set: weder neu noch profil abgelehnt", /oder neu/.test(mpJson(callTool("elo_display_profile_set", { ziele: "6" })).fehler));
+  } else {
+    pruefe("elo_display_profile_set nur mit -Bauen", /nicht freigeschaltet/.test(mpJson(callTool("elo_display_profile_set", { profil: "Rechnung", ziele: "5" })).fehler));
+  }
+} finally {
+  ELO.ix = apIxEcht; ELO.connect = apConnEcht; jsonSichern = apSichernEcht; protokoll = apProtokollEcht;
+}
 
 OUT.println("");
 OUT.println(okZahl + " ok, " + fehlerZahl + " Fehler");
